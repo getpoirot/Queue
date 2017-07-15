@@ -1,0 +1,23 @@
+{
+    "name"       : "poirot/queue"
+   ,"description": ""
+   ,"type"       : "library"
+   ,"authors": [
+        {
+            "name": "Payam Naderi"
+           ,"email": "naderi.payam@gmail.com"
+           ,"role": "Developer"
+        }
+    ]
+   ,"autoload"  : {
+        "psr-4": {
+            "Poirot\\Queue\\": "src/"
+        }
+       ,"files": [
+          "src/_functions.php"
+        ]
+    }
+   ,"repositories": [
+      { "type": "git" ,"url": "https://github.com/phPoirot/Queue.git" }
+    ]
+}
