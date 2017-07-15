@@ -13,9 +13,6 @@
         "psr-4": {
             "Poirot\\Queue\\": "src/"
         }
-       ,"files": [
-          "src/_functions.php"
-        ]
     }
    ,"repositories": [
       { "type": "git" ,"url": "https://github.com/phPoirot/Queue.git" }
