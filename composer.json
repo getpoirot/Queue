@@ -1,6 +1,6 @@
 {
     "name"       : "poirot/queue"
-   ,"description": ""
+   ,"description": "Serve as an abstract layer between your application code and the implementation of the queue."
    ,"type"       : "library"
    ,"authors": [
         {
