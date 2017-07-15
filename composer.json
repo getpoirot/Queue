@@ -9,6 +9,9 @@
            ,"role": "Developer"
         }
     ]
+    , "require": {
+        "poirot/storage": "dev-devel"
+    }
    ,"autoload"  : {
         "psr-4": {
             "Poirot\\Queue\\": "src/"
