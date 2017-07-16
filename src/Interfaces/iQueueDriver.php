@@ -1,6 +1,8 @@
 <?php
 namespace Poirot\Queue\Interfaces;
 
+use Poirot\Queue\Exception\exIOError;
+
 
 interface iQueueDriver
 {
@@ -11,6 +13,7 @@ interface iQueueDriver
      * @param iPayload $payload Serializable payload
      *
      * @return iPayloadQueued
+     * @throws exIOError
      */
     function push($queue, $payload);
 
@@ -20,18 +23,31 @@ interface iQueueDriver
      * @param string $queue
      *
      * @return iPayloadQueued|null
+     * @throws exIOError
      */
     function pop($queue);
 
     /**
-     * Remove an Specific From Queue
+     * Release an Specific From Queue By Removing It
      *
      * @param iPayloadQueued|string $queue
      * @param null|string           $id
      *
      * @return void
+     * @throws exIOError
      */
-    function del($queue, $id);
+    function release($queue, $id = null);
+
+    /**
+     * Find Queued Payload By Given ID
+     *
+     * @param string $queue
+     * @param string $id
+     *
+     * @return iPayloadQueued|null
+     * @throws exIOError
+     */
+    function findByID($queue, $id);
 
     /**
      * Get Queue Size
@@ -39,13 +55,15 @@ interface iQueueDriver
      * @param string $queue
      *
      * @return int
+     * @throws exIOError
      */
     function size($queue);
 
     /**
      * Get Queues List
      *
-     * @return []string
+     * @return string[]
+     * @throws exIOError
      */
     function listQueues();
 }

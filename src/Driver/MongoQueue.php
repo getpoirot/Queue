@@ -3,6 +3,9 @@ namespace Poirot\Queue\Driver;
 
 use MongoDB;
 
+use Poirot\Queue\Exception\exIOError;
+use Poirot\Queue\Exception\exReadError;
+use Poirot\Queue\Exception\exWriteError;
 use Poirot\Queue\Interfaces\iPayload;
 use Poirot\Queue\Interfaces\iPayloadQueued;
 use Poirot\Queue\Interfaces\iQueueDriver;
@@ -10,8 +13,18 @@ use Poirot\Queue\Payload\QueuedPayload;
 use Poirot\Storage\Interchange\SerializeInterchange;
 
 
-// TODO Handle Errors
-
+/**
+ * These Indexes:
+ *
+ * 	{
+ *    "queue": NumberLong(1)
+ * }
+ * {
+ *   "_id": NumberLong(1),
+ *   "queue": NumberLong(1)
+ * }
+ *
+ */
 class MongoQueue
     implements iQueueDriver
 {
@@ -23,6 +36,9 @@ class MongoQueue
         'document' => 'array',
         'array' => 'array',
     ];
+
+    /** @var SerializeInterchange */
+    protected $_c_interchangable;
 
 
     /**
@@ -39,27 +55,34 @@ class MongoQueue
     /**
      * Push To Queue
      *
-     * @param string $queue
+     * @param string   $queue
      * @param iPayload $payload Serializable payload
      *
      * @return iPayloadQueued
+     * @throws exIOError
      */
     function push($queue, $payload)
     {
-        $payload = $payload->getPayload();
+        $payload  = $payload->getPayload();
+        $sPayload = $this->_interchangeable()
+            ->makeForward($payload);
 
-        $this->collection->insertOne(
-            [
-                '_id'     => $uid = new \MongoId(),
-                'queue'   => $this->_normalizeQueueName($queue),
-                'payload' => __(new SerializeInterchange())->makeForward( $payload ),
-                'created_timestamp' => time(),
-            ]
-        );
+        try {
+            $this->collection->insertOne(
+                [
+                    '_id'     => $uid = new MongoDB\BSON\ObjectID(),
+                    'queue'   => $this->_normalizeQueueName($queue),
+                    'payload' => new MongoDB\BSON\Binary($sPayload, MongoDB\BSON\Binary::TYPE_GENERIC),
+                    'created_timestamp' => time(),
+                ]
+            );
+        } catch (\Exception $e) {
+            throw new exWriteError('Error While Write To Mongo Client.', $e->getCode(), $e);
+        }
 
         $queued = new QueuedPayload($payload);
         $queued = $queued
-            ->withUID($uid)
+            ->withUID( (string) $uid)
             ->withQueue($queue)
         ;
 
@@ -69,57 +92,113 @@ class MongoQueue
     /**
      * Pop From Queue
      *
+     * note: when you pop a message from queue you have to
+     *       release it when worker done with it.
+     *
+     *
      * @param string $queue
      *
      * @return iPayloadQueued|null
+     * @throws exIOError
      */
     function pop($queue)
     {
-        $queued = $this->collection->findOne(
-            [
-                'queue' => $this->_normalizeQueueName($queue),
-            ]
-            , [
-                // pick last one in the queue
-                'sort'    => [ '_id' => -1 ],
-                // override typeMap option
-                'typeMap' => self::$typeMap,
-            ]
-        );
+        try {
+            $queued = $this->collection->findOne(
+                [
+                    'queue' => $this->_normalizeQueueName($queue),
+                ]
+                , [
+                    // pick last one in the queue
+                    'sort'    => [ '_id' => -1 ],
+                    // override typeMap option
+                    'typeMap' => self::$typeMap,
+                ]
+            );
+        } catch (\Exception $e) {
+            throw new exReadError('Error While Write To Mongo Client.', $e->getCode(), $e);
+        }
 
         if (! $queued )
             return null;
 
 
-        $payload = __(new SerializeInterchange())
+        $payload = $this->_interchangeable()
             ->retrieveBackward($queued['payload']);
 
         $payload = new QueuedPayload($payload);
         $payload = $payload->withQueue($queue)
-            ->withUID($queued['_id']);
+            ->withUID( (string) $queued['_id'] );
 
         return $payload;
     }
 
     /**
-     * Remove an Specific From Queue
+     * Release an Specific From Queue By Removing It
      *
      * @param iPayloadQueued|string $queue
      * @param null|string           $id
      *
      * @return void
+     * @throws exIOError
      */
-    function del($queue, $id)
+    function release($queue, $id = null)
     {
-        if ($queue instanceof iPayloadQueued) {
+        if ( $queue instanceof iPayloadQueued ) {
             $id    = $queue->getUID();
             $queue = $queue->getQueue();
         }
 
-        $this->collection->deleteOne([
-            '_id'   => $id,
-            'queue' => $this->_normalizeQueueName($queue),
-        ]);
+        try {
+            $this->collection->deleteOne([
+                '_id'   => new MongoDB\BSON\ObjectID($id),
+                'queue' => $this->_normalizeQueueName($queue),
+            ]);
+        } catch (\Exception $e) {
+            throw new exWriteError('Error While Write To Mongo Client.', $e->getCode(), $e);
+        }
+    }
+
+    /**
+     * Find Queued Payload By Given ID
+     *
+     * @param string $queue
+     * @param string $id
+     *
+     * @return iPayloadQueued|null
+     * @throws exIOError
+     */
+    function findByID($queue, $id)
+    {
+        try {
+            $queued = $this->collection->findOne(
+                [
+                    'queue' => $this->_normalizeQueueName($queue),
+                ]
+                , [
+                    // pick last one in the queue
+                    'sort'    => [ '_id' => -1 ],
+                    // override typeMap option
+                    'typeMap' => self::$typeMap,
+                ]
+            );
+        } catch (\Exception $e) {
+            throw new exReadError('Error While Write To Mongo Client.', $e->getCode(), $e);
+        }
+
+
+        if (! $queued )
+            return null;
+
+
+        $payload = $this->_interchangeable()
+            ->retrieveBackward($queued['payload']);
+
+        $payload = new QueuedPayload($payload);
+        $payload = $payload->withQueue($queue)
+            ->withUID( (string) $queued['_id'] );
+
+        return $payload;
     }
 
     /**
@@ -128,14 +207,19 @@ class MongoQueue
      * @param string $queue
      *
      * @return int
+     * @throws exIOError
      */
     function size($queue)
     {
-        $count = $this->collection->count(
-            [
-                'queue' => $this->_normalizeQueueName($queue),
-            ]
-        );
+        try {
+            $count = $this->collection->count(
+                [
+                    'queue' => $this->_normalizeQueueName($queue),
+                ]
+            );
+        } catch (\Exception $e) {
+            throw new exReadError('Error While Write To Mongo Client.', $e->getCode(), $e);
+        }
 
         return $count;
     }
@@ -143,21 +227,28 @@ class MongoQueue
     /**
      * Get Queues List
      *
-     * @return []string
+     * @return string[]
+     * @throws exIOError
      */
     function listQueues()
     {
-        $csr = $this->collection->aggregate(
-            [
-                '$group' => [
-                    '_id'   => [ '$queue' ],
-                ],
-            ]
-            , [
-                // override typeMap option
-                'typeMap' => self::$typeMap,
-            ]
-        );
+        try {
+            $csr = $this->collection->aggregate(
+                [
+                    [
+                        '$group' => [
+                            '_id'   => '$queue',
+                        ],
+                    ],
+                ]
+                , [
+                    // override typeMap option
+                    'typeMap' => self::$typeMap,
+                ]
+            );
+        } catch (\Exception $e) {
+            throw new exReadError('Error While Write To Mongo Client.', $e->getCode(), $e);
+        }
 
         $list = [];
         foreach ($csr as $item)
@@ -169,6 +260,21 @@ class MongoQueue
 
     // ..
 
+    /**
+     * @return SerializeInterchange
+     */
+    protected function _interchangeable()
+    {
+        if (! $this->_c_interchangable)
+            $this->_c_interchangable = new SerializeInterchange;
+
+        return $this->_c_interchangable;
+    }
+
+    /**
+     * @param string $queue
+     * @return string
+     */
     protected function _normalizeQueueName($queue)
     {
         return strtolower( (string) $queue );

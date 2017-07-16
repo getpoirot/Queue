@@ -4,6 +4,12 @@ namespace Poirot\Queue\Payload;
 use Poirot\Queue\Interfaces\iPayload;
 
 
+/**
+ * Other Payload can extend this
+ *
+ * - Assert On Payload Valuable
+ *
+ */
 class BasePayload
     implements iPayload
 {
