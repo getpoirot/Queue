@@ -10,7 +10,8 @@
         }
     ]
     , "require": {
-        "poirot/storage": "dev-devel"
+        "poirot/std": "dev-devel"
+        , "poirot/storage": "dev-devel"
     }
    ,"autoload"  : {
         "psr-4": {
