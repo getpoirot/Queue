@@ -9,13 +9,13 @@ interface iQueueDriver
     /**
      * Push To Queue
      *
-     * @param string   $queue
      * @param iPayload $payload Serializable payload
+     * @param string   $queue
      *
      * @return iPayloadQueued
      * @throws exIOError
      */
-    function push($queue, $payload);
+    function push($payload, $queue = null);
 
     /**
      * Pop From Queue
@@ -25,29 +25,29 @@ interface iQueueDriver
      * @return iPayloadQueued|null
      * @throws exIOError
      */
-    function pop($queue);
+    function pop($queue = null);
 
     /**
      * Release an Specific From Queue By Removing It
      *
-     * @param iPayloadQueued|string $queue
-     * @param null|string           $id
+     * @param iPayloadQueued|string $id
+     * @param null|string           $queue
      *
      * @return void
      * @throws exIOError
      */
-    function release($queue, $id = null);
+    function release($id, $queue = null);
 
     /**
      * Find Queued Payload By Given ID
      *
-     * @param string $queue
      * @param string $id
+     * @param string $queue
      *
      * @return iPayloadQueued|null
      * @throws exIOError
      */
-    function findByID($queue, $id);
+    function findByID($id, $queue = null);
 
     /**
      * Get Queue Size
@@ -57,7 +57,7 @@ interface iQueueDriver
      * @return int
      * @throws exIOError
      */
-    function size($queue);
+    function size($queue = null);
 
     /**
      * Get Queues List
