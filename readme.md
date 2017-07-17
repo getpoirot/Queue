@@ -45,7 +45,7 @@ while ($QueuedMessage = $q->pop('send-mails')) {
 
 ```php
 
-$queue = new InMemoryQueue($collection);
+$queue = new InMemoryQueue();
 
 # Build Aggregate Queue
 #
