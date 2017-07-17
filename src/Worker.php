@@ -5,58 +5,148 @@ use Poirot\Events\Interfaces\iEvent;
 use Poirot\Events\Interfaces\iEventHeap;
 use Poirot\Events\Interfaces\Respec\iEventProvider;
 use Poirot\Queue\Interfaces\iQueueDriver;
-use Poirot\Queue\Queue\EventHeapOfQueue;
+use Poirot\Queue\Queue\AggregateQueue;
+use Poirot\Queue\Queue\InMemoryQueue;
+use Poirot\Queue\Worker\EventHeapOfWorker;
 use Poirot\Std\ConfigurableSetter;
 use Poirot\Std\Exceptions\exImmutable;
+use Poirot\Storage\FlatFileStore;
+use Poirot\Storage\Interfaces\iDataStore;
 
 
 class Worker
     extends ConfigurableSetter
     implements iEventProvider
 {
-    /** @var string */
-    protected $channel;
-    /** @var iQueueDriver */
-    protected $queueDriver;
+    /** @var string Worker name */
+    protected $name;
+    /** @var AggregateQueue */
+    protected $queue;
+
     /** @var iEventHeap */
     protected $events;
+    /** @var iDataStore */
+    protected $storage;
+    /** @var iQueueDriver */
+    protected $builtinQueue;
 
 
     /**
-     * Set Queue Channel Name
+     * Worker constructor.
      *
-     * @param string $channel
+     * @param string         $name
+     * @param AggregateQueue $queue
+     * @param array          $settings
+     */
+    function __construct($name, AggregateQueue $queue, $settings = null)
+    {
+        $this->name  = (string) $name;
+        $this->queue = $queue;
+
+        if ($settings !== null)
+            parent::__construct($settings);
+
+
+        $this->__init();
+    }
+
+
+    function __init()
+    {
+
+    }
+
+
+    function go()
+    {
+        # Achieve Max Execution Time
+        #
+        ini_set('max_execution_time', 0);
+        set_time_limit(0);
+
+        // TODO Move to demon
+        // allow the script to run forever
+        ignore_user_abort(true);
+
+
+        # Go For Jobs
+        #
+        while ( 1 )
+        {
+
+        }
+    }
+
+
+    // Options:
+
+    /**
+     * Give Storage Object To Worker
+     *
+     * @param iDataStore $storage
      *
      * @return $this
      */
-    function setChannel($channel)
+    function giveStorage(iDataStore $storage)
     {
-        $this->channel = (string) $channel;
+        if ($this->storage)
+            throw new exImmutable(sprintf(
+                'Storage (%s) is given.'
+                , \Poirot\Std\flatten($this->storage)
+            ));
+
+
+        $this->storage = $storage;
         return $this;
     }
 
     /**
-     * Get Queue Channel Name
+     * Storage
      *
-     * @return string
+     * @return iDataStore
      */
-    function getChannel()
+    protected function _getStorage()
     {
-        return $this->channel;
+        if (! $this->storage) {
+            $realm = str_replace('\\', '_', get_class($this));
+            $this->giveStorage( new FlatFileStore($realm.'__'.$this->name) );
+        }
+
+        return $this->storage;
     }
 
     /**
-     * Give Queue Driver
+     * Give Built In Queue Driver
      *
      * @param iQueueDriver $queueDriver
      *
      * @return $this
-     * @throws exImmutable
      */
-    function giveQueueDriver(iQueueDriver $queueDriver)
+    function giveBuiltInQueue(iQueueDriver $queueDriver)
     {
-        $this->queueDriver = $queueDriver;
+        if ($this->builtinQueue)
+            throw new exImmutable(sprintf(
+                'Built-in Queue (%s) is given.'
+                , \Poirot\Std\flatten($this->builtinQueue)
+            ));
+
+
+        $this->builtinQueue = $queueDriver;
         return $this;
+    }
+
+    /**
+     * Get Built In Queue Driver
+     *
+     * @return iQueueDriver
+     */
+    protected function _getBuiltInQueue()
+    {
+        if (! $this->builtinQueue )
+            $this->giveBuiltInQueue( new InMemoryQueue );
+
+
+        return $this->builtinQueue;
     }
 
 
@@ -70,7 +160,7 @@ class Worker
     function event()
     {
         if (! $this->events)
-            $this->events = new EventHeapOfQueue;
+            $this->events = new EventHeapOfWorker;
 
         return $this->events;
     }

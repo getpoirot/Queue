@@ -1,16 +1,15 @@
 <?php
-namespace Poirot\Queue\Queue;
+namespace Poirot\Queue\Worker;
 
 use Poirot\Events\Event;
 use Poirot\Events\EventHeap;
 
 
-class EventHeapOfQueue
+class EventHeapOfWorker
     extends EventHeap
 {
-    const EVENT_BEFORE_EXEC = 'queue.before.exec';
-    const EVENT_AFTER_EXEC  = 'queue.after.exec';
-
+    const EVENT_PAYLOAD_RECEIVED = 'worker.payload.received';
+    const EVENT_PAYLOAD_FAILURE  = 'worker.after.exec';
 
     /**
      * Initialize
@@ -21,8 +20,8 @@ class EventHeapOfQueue
         $this->collector = new DataCollector;
 
         // attach default event names:
-        $this->bind(new Event(self::EVENT_BEFORE_EXEC));
-        $this->bind(new Event(self::EVENT_AFTER_EXEC));
+        $this->bind(new Event(self::EVENT_PAYLOAD_RECEIVED));
+        $this->bind(new Event(self::EVENT_PAYLOAD_FAILURE));
     }
 
     /**
