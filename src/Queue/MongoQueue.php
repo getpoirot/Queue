@@ -145,8 +145,9 @@ class MongoQueue
     function release($id, $queue = null)
     {
         if ( $id instanceof iPayloadQueued ) {
-            $id    = $id->getUID();
-            $queue = $id->getQueue();
+            $arg   = $id;
+            $id    = $arg->getUID();
+            $queue = $arg->getQueue();
         }
 
         try {
