@@ -4,6 +4,9 @@ namespace Poirot\Queue;
 use Poirot\Events\Interfaces\iEvent;
 use Poirot\Events\Interfaces\iEventHeap;
 use Poirot\Events\Interfaces\Respec\iEventProvider;
+use Poirot\Queue\Exception\exIOError;
+use Poirot\Queue\Interfaces\iPayload;
+use Poirot\Queue\Interfaces\iPayloadQueued;
 use Poirot\Queue\Interfaces\iQueueDriver;
 use Poirot\Queue\Queue\AggregateQueue;
 use Poirot\Queue\Queue\InMemoryQueue;
@@ -19,7 +22,7 @@ class Worker
     implements iEventProvider
 {
     /** @var string Worker name */
-    protected $name;
+    protected $workerID;
     /** @var AggregateQueue */
     protected $queue;
 
@@ -30,17 +33,22 @@ class Worker
     /** @var iQueueDriver */
     protected $builtinQueue;
 
+    /** @var int Second(s) */
+    protected $blockingInterval = 3;
+    /** @var int Second(s) */
+    protected $sleep = 0;
+
 
     /**
      * Worker constructor.
      *
-     * @param string         $name
+     * @param string         $workerID
      * @param AggregateQueue $queue
      * @param array          $settings
      */
-    function __construct($name, AggregateQueue $queue, $settings = null)
+    function __construct($workerID, AggregateQueue $queue, $settings = null)
     {
-        $this->name  = (string) $name;
+        $this->workerID  = (string) $workerID;
         $this->queue = $queue;
 
         if ($settings !== null)
@@ -50,13 +58,25 @@ class Worker
         $this->__init();
     }
 
-
     function __init()
     {
 
     }
 
+    /**
+     * Get Worker ID
+     *
+     * @return string
+     */
+    function getWorkerID()
+    {
+        return $this->workerID;
+    }
 
+    /**
+     * Go Running The Worker Processes
+     *
+     */
     function go()
     {
         # Achieve Max Execution Time
@@ -64,21 +84,110 @@ class Worker
         ini_set('max_execution_time', 0);
         set_time_limit(0);
 
-        // TODO Move to demon
-        // allow the script to run forever
-        ignore_user_abort(true);
+
+        # Add Default Queues To Control Follow
+        #
+        $queueProcess = $this->_getBuiltInQueue();
+        $failedQueue  = $this->_getBuiltInQueue();
+
+        $this->queue->addQueue('failed', $failedQueue, 0.9);
 
 
         # Go For Jobs
         #
         while ( 1 )
         {
+            $retryException = 0;
 
+            try {
+                // Pop Payload form Queue
+                $originPayload = $this->queue->pop();
+
+                ## Push To Process Payload and Release Queue So Child Processes can continue
+                #
+                $processPayload = $queueProcess->push($originPayload, 'process');
+                // Release Queue So Child Processes can continue
+                $this->queue->release($originPayload);
+
+                ## Perform Payload Execution
+                #
+                $this->performPayload($processPayload);
+                // Release Process From Queue
+                $queueProcess->release($processPayload);
+
+            } catch (exIOError $e) {
+                sleep( $this->getBlockingInterval() );
+
+                $retryException++;
+                continue;
+            }
+
+
+
+            if ($sleep = $this->getSleep())
+                // Take a breath between hooks
+                sleep($sleep);
         }
+
     }
 
+    /**
+     * Perform Payload Execution
+     *
+     * @param iPayloadQueued $processPayload
+     *
+     * @return void
+     */
+    function performPayload(iPayloadQueued $processPayload)
+    {
+        // TODO Implement this ...
+    }
 
     // Options:
+
+    /**
+     * @return int
+     */
+    function getBlockingInterval()
+    {
+        return $this->blockingInterval;
+    }
+
+    /**
+     * Blocking Interval In Second
+     *
+     * @param int $blockingInterval
+     *
+     * @return $this
+     */
+    function setBlockingInterval($blockingInterval)
+    {
+        $this->blockingInterval = (int) $blockingInterval;
+        return $this;
+    }
+
+    /**
+     * Get Sleep Time Between Payload Retrievals
+     *
+     * @return int Second
+     */
+    function getSleep()
+    {
+        return $this->sleep;
+    }
+
+    /**
+     * Set Sleep Time Between Payload Retrievals
+     *
+     * @param int $sleep Second
+     *
+     * @return $this
+     */
+    function setSleep($sleep)
+    {
+        $this->sleep = $sleep;
+        return $this;
+    }
 
     /**
      * Give Storage Object To Worker
@@ -109,7 +218,7 @@ class Worker
     {
         if (! $this->storage) {
             $realm = str_replace('\\', '_', get_class($this));
-            $this->giveStorage( new FlatFileStore($realm.'__'.$this->name) );
+            $this->giveStorage( new FlatFileStore($realm.'__'.$this->workerID) );
         }
 
         return $this->storage;
@@ -164,4 +273,9 @@ class Worker
 
         return $this->events;
     }
+
+
+    // ..
+
+
 }
