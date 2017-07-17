@@ -44,19 +44,16 @@ while ($QueuedMessage = $q->pop('send-mails')) {
 ## Aggregate Queue With Priority Weight
 
 ```php
-$client     = \Module\MongoDriver\Actions::Driver()->getClient('master');
-$collection = $client->selectCollection('papioniha', 'queue.app');
 
-$qMongo = new MongoQueue($collection);
-
+$queue = new InMemoryQueue($collection);
 
 # Build Aggregate Queue
 #
 $qAggregate = new AggregateQueue([
     // Send Authorization SMS With Higher Priority
-    'send-sms-auth'   => [ $qMongo, 0.9 ],
+    'send-sms-auth'   => [ $queue, 0.9 ],
     // Normal Messages
-    'send-sms-notify' => [ $qMongo, 0.2 ],
+    'send-sms-notify' => [ $queue, 0.2 ],
 ]);
 
 
@@ -93,4 +90,5 @@ while ( $payload = $qAggregate->pop() ) {
     // release message
     $qAggregate->release($payload);
 }
+
 ```
