@@ -173,11 +173,10 @@ class MongoQueue
         try {
             $queued = $this->collection->findOne(
                 [
+                    '_id'   => new MongoDB\BSON\ObjectID( (string) $id),
                     'queue' => $this->_normalizeQueueName($queue),
                 ]
                 , [
-                    // pick last one in the queue
-                    'sort'    => [ '_id' => -1 ],
                     // override typeMap option
                     'typeMap' => self::$typeMap,
                 ]
