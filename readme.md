@@ -49,15 +49,20 @@ $collection = $client->selectCollection('papioniha', 'queue.app');
 
 $qMongo = new MongoQueue($collection);
 
+
+# Build Aggregate Queue
+#
 $qAggregate = new AggregateQueue([
     // Send Authorization SMS With Higher Priority
-    'send-sms-auth'   => [ $qMongo, 10 ],
+    'send-sms-auth'   => [ $qMongo, 0.9 ],
     // Normal Messages
-    'send-sms-notify' => [ $qMongo, 3 ],
+    'send-sms-notify' => [ $qMongo, 0.2 ],
 ]);
 
 
-for ($i =0; $i<=100; $i++) {
+# Add To Queue
+#
+for ($i =0; $i<1000; $i++) {
     $postfix = random_int(0, 9999);
     $code    = random_int(0, 9999);
     $message = (object)['ver'=>'0.1', 'to'=>'0935549'.$postfix, 'template'=>'auth', 'code' => $code];
@@ -65,21 +70,27 @@ for ($i =0; $i<=100; $i++) {
     $qAggregate->push(new BasePayload($message), 'send-sms-auth');
 }
 
-for ($i =0; $i<=600; $i++) {
+for ($i =0; $i<1000; $i++) {
     $postfix = random_int(0, 9999);
     $message = (object)['ver'=>'0.1', 'to'=>'0935549'.$postfix, 'template'=>'welcome'];
 
     $qAggregate->push(new BasePayload($message), 'send-sms-notify');
 }
 
+
+# Pop From Queue send SMS
+#
 while ( $payload = $qAggregate->pop() ) {
-    if (!isset($skip) && $qAggregate->size('send-sms-auth') == 0 ) {
+    $size = $qAggregate->size('send-sms-auth');
+    if (!isset($skip) && $size == 0 ) {
         $behind = $qAggregate->size('send-sms-notify');
         print_r(sprintf('Sending Auth SMS Done While Normal Queue Has (%s) in list.', $behind));
         echo '<br/>';
+
         $skip = true;
     }
 
+    // release message
     $qAggregate->release($payload);
 }
 ```
