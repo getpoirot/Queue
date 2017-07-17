@@ -4,6 +4,11 @@ namespace Poirot\Queue\Interfaces;
 use Poirot\Queue\Exception\exIOError;
 
 
+/**
+ * Destroy and clear Queue is beside of backend engine
+ * administration.
+ *
+ */
 interface iQueueDriver
 {
     /**

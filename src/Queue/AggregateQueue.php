@@ -12,7 +12,8 @@ class AggregateQueue
     implements iQueueDriver
 {
     /** @var iQueueDriver[string] */
-    protected $queues;
+    protected $queues  = [];
+    protected $weights = [];
 
 
     /**
@@ -44,9 +45,16 @@ class AggregateQueue
         {
             $payload = null;
 
-            // TODO Push To Channel With Maximum Wheight (or win choose algorithm)
-            /** @var iQueueDriver $queue */
-            foreach ( $this->queues as $channel => $queue ) {
+            ## Push To Channels With Max Priority Weight
+            #
+            $weights = $this->weights;
+            while ( empty($weights) )
+            {
+                $channel = \Poirot\Queue\mathAlias($weights);
+                unset($weights[$channel]);
+
+                /** @var iQueueDriver $queue */
+                $queue  = $this->queues[$channel];
                 if ( $payload = $queue->push($payload, $channel) )
                     break;
             }
@@ -77,12 +85,17 @@ class AggregateQueue
         {
             $payload = null;
 
+            ## Pop From Channels With Max Priority Weight
+            #
+            $weights = $this->weights;
+            while (! empty($weights) )
+            {
+                $channel = \Poirot\Queue\mathAlias($weights);
+                unset($weights[$channel]);
 
-            // TODO Retrieve Round Robin With Weight
-
-            /** @var iQueueDriver $queue */
-            foreach ( $this->queues as $channel => $queue ) {
-                if ( $payload = $queue->pop($channel) )
+                /** @var iQueueDriver $queue */
+                $queue  = $this->queues[$channel];
+                if ($payload = $queue->pop($channel))
                     break;
             }
 
@@ -196,6 +209,12 @@ class AggregateQueue
     /**
      * Set Queues
      *
+     * [
+     *   'channel_name' => iQueueDriver,
+     *   // or
+     *   'channel_name' => [iQueueDriver, $weight]
+     * ]
+     *
      * @param iQueueDriver[] $queues
      *
      * @return $this
@@ -203,8 +222,16 @@ class AggregateQueue
      */
     function setQueues(array $queues)
     {
-        foreach ( $queues as $channel => $queue )
-            $this->addQueue($channel, $queue);
+        foreach ( $queues as $channel => $queue ) {
+            if (! is_array($queue) )
+                $queue = [$queue];
+
+            $q = array_shift($queue);
+            if ( null === $w = array_shift($queue) )
+                $w = 1;
+
+            $this->addQueue($channel, $q, $w);
+        }
 
         return $this;
     }
@@ -214,11 +241,12 @@ class AggregateQueue
      *
      * @param string       $channel
      * @param iQueueDriver $queue
+     * @param int          $weight
      *
      * @return $this
      * @throws \Exception
      */
-    function addQueue($channel, $queue)
+    function addQueue($channel, $queue, $weight = 1)
     {
         $orig    = $channel;
         $channel = $this->_normalizeQueueName($channel);
@@ -237,7 +265,8 @@ class AggregateQueue
             ));
 
 
-        $this->queues[$channel] = $queue;
+        $this->queues[$channel]  = $queue;
+        $this->weights[$channel] = $weight;
         return $this;
     }
 
