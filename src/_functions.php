@@ -35,9 +35,16 @@ namespace Poirot\Queue
      */
     function mathAlias(array $probabilities)
     {
+        $stack = [];
+        foreach ($probabilities as $key => $weight)
+            $stack = array_merge($stack, array_fill(0, $weight, $key));
+
+        $i = mt_rand(0, count($stack) -1);
+        return $stack[$i];
+
+
         $keys          = array_keys($probabilities);
         $probabilities = array_values($probabilities);
-
 
         $small = $large = [];
 

@@ -41,22 +41,22 @@ class DataCollector
     extends \Poirot\Events\Event\DataCollector
 {
     /** @var iPayloadQueued */
-    protected $receivedPayload;
+    protected $payload;
 
 
     /**
      * @return mixed
      */
-    public function getReceivedPayload()
+    public function getPayload()
     {
-        return $this->receivedPayload;
+        return $this->payload;
     }
 
     /**
-     * @param mixed $receivedPayload
+     * @param mixed $payload
      */
-    public function setReceivedPayload($receivedPayload)
+    public function setPayload($payload)
     {
-        $this->receivedPayload = $receivedPayload;
+        $this->payload = $payload;
     }
 }

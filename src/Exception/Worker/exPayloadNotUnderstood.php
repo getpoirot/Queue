@@ -3,7 +3,7 @@ namespace Poirot\Queue\Exception\Worker;
 
 
 class exPayloadNotUnderstood
-    extends exPayloadPerformFailed
+    extends exPayloadMaxTriesExceed
 {
 
 }

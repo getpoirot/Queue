@@ -1,20 +1,19 @@
 <?php
 namespace Poirot\Queue;
 
-use Poirot\Events\Interfaces\iEvent;
 use Poirot\Events\Interfaces\iEventHeap;
 use Poirot\Events\Interfaces\Respec\iEventProvider;
-use Poirot\Queue\Exception\exIOError;
-use Poirot\Queue\Interfaces\iPayload;
+use Poirot\Queue\Exception\Worker\exPayloadMaxTriesExceed;
+use Poirot\Queue\Exception\Worker\exPayloadPerformFailed;
 use Poirot\Queue\Interfaces\iPayloadQueued;
 use Poirot\Queue\Interfaces\iQueueDriver;
+use Poirot\Queue\Payload\BasePayload;
 use Poirot\Queue\Queue\AggregateQueue;
 use Poirot\Queue\Queue\InMemoryQueue;
 use Poirot\Queue\Worker\EventHeapOfWorker;
+use Poirot\Queue\Worker\Events\PayloadReceived\ListenerExecutePayload;
 use Poirot\Std\ConfigurableSetter;
 use Poirot\Std\Exceptions\exImmutable;
-use Poirot\Storage\FlatFileStore;
-use Poirot\Storage\Interfaces\iDataStore;
 
 
 class Worker
@@ -28,11 +27,10 @@ class Worker
 
     /** @var iEventHeap */
     protected $events;
-    /** @var iDataStore */
-    protected $storage;
     /** @var iQueueDriver */
     protected $builtinQueue;
 
+    protected $maxTries = 3;
     /** @var int Second(s) */
     protected $blockingInterval = 3;
     /** @var int Second(s) */
@@ -54,13 +52,11 @@ class Worker
         if ($settings !== null)
             parent::__construct($settings);
 
-
-        $this->__init();
     }
 
-    function __init()
+    protected function __init()
     {
-
+        $this->_attachDefaultEvents();
     }
 
     /**
@@ -87,41 +83,103 @@ class Worker
 
         # Add Default Queues To Control Follow
         #
-        $queueProcess = $this->_getBuiltInQueue();
         $failedQueue  = $this->_getBuiltInQueue();
-
-        $this->queue->addQueue('failed', $failedQueue, 0.9);
+        $this->queue->addQueue('failed', $failedQueue, 9);
 
 
         # Go For Jobs
         #
         while ( 1 )
         {
-            $retryException = 0;
-
             try {
-                // Pop Payload form Queue
-                $originPayload = $this->queue->pop();
+
+                ## Pop a Payload from Queue
+                #
+                $originPayload = \Poirot\Std\reTry(
+                    function () {
+                        // Pop Payload form Queue
+                        return $this->queue->pop();
+                    }
+                    , $this->getMaxTries()
+                    , $this->getBlockingInterval()
+                );
+
+                if ($originPayload === null) {
+                    // Queue is empty
+                    sleep( $this->getBlockingInterval() );
+                    continue;
+                }
+
 
                 ## Push To Process Payload and Release Queue So Child Processes can continue
                 #
-                $processPayload = $queueProcess->push($originPayload, 'process');
-                // Release Queue So Child Processes can continue
-                $this->queue->release($originPayload);
+                $processPayload = \Poirot\Std\reTry(
+                    function() use ($originPayload) {
+                        return $this->_getBuiltInQueue()->push($originPayload, 'processing');
+                    }
+                    , $this->getMaxTries()
+                    , $this->getBlockingInterval()
+                );
+
+                ## Release Queue So Child Processes can continue
+                #
+                $flagOriginReleased = \Poirot\Std\reTry(
+                    function() use ($originPayload) {
+                        $this->queue->release($originPayload);
+                        return true;
+                    }
+                    , $this->getMaxTries()
+                    , $this->getBlockingInterval()
+                );
+
 
                 ## Perform Payload Execution
                 #
                 $this->performPayload($processPayload);
-                // Release Process From Queue
-                $queueProcess->release($processPayload);
 
-            } catch (exIOError $e) {
-                sleep( $this->getBlockingInterval() );
+            }
+            catch (exPayloadPerformFailed $e) {
+                ## Push Back Payload as Failed Message To Queue Again For Next Process
+                #
+                \Poirot\Std\reTry(
+                    function() use ($e) {
+                        // Build Message For Performer
+                        // @see self::performPayload
+                        $message = [ 'failed', $e->getTries(), $e->getWhy()->getMessage(), $e->getPayload() ];
+                        return $this->_getBuiltInQueue()->push( new BasePayload($message), 'failed' );
+                    }
+                    , $this->getMaxTries()
+                    , $this->getBlockingInterval()
+                );
+            }
+            catch (exPayloadMaxTriesExceed $e) {
+                // Log Failed Messages
+                $this->event()->trigger(
+                    EventHeapOfWorker::EVENT_PAYLOAD_FAILURE
+                    , [ 'payload' => $e->getPayload() ]
+                );
+            }
+            catch (\Exception $e) {
 
-                $retryException++;
-                continue;
+                // Origin Released from queue and process failed
+                // So It Must Back To List Again
+                if ( isset($flagOriginReleased) ) {
+                    \Poirot\Std\reTry(
+                        function () use ($originPayload) {
+                            // Push Payload Back To Queue
+                            return $this->queue->push($originPayload, $originPayload->getQueue());
+                        }
+                        , $this->getMaxTries()
+                        , $this->getBlockingInterval()
+                    );
+                }
+
             }
 
+            ## Release Process From Queue
+            #
+            if ( isset($processPayload) )
+                $this->_getBuiltInQueue()->release($processPayload);
 
 
             if ($sleep = $this->getSleep())
@@ -140,7 +198,36 @@ class Worker
      */
     function performPayload(iPayloadQueued $processPayload)
     {
-        // TODO Implement this ...
+        $payLoad    = $processPayload->getPayload();
+        $triesCount = 0;
+
+        if ( is_array($payLoad) ) {
+            // ['failed', 4, 'Request to server X was timeout.', ['ver' => '0.1', 'fun' => 'echo']]
+            @list($failedTag, $triesCount, $exceptionWhy) = $payLoad;
+            if ($failedTag === 'failed') {
+                if ( $triesCount > $this->getMaxTries() )
+                    throw new exPayloadMaxTriesExceed($payLoad, 'Max Tries Exceeds.' . $exceptionWhy, null);
+
+                // Retrieve Original Payload
+                $payLoad = end($payLoad);
+            }
+        }
+
+        try {
+            ob_start();
+
+            $this->event()->trigger(
+                EventHeapOfWorker::EVENT_PAYLOAD_RECEIVED
+                , [ 'payload' => $payLoad ]
+            );
+
+            ob_end_flush(); // Strange behaviour, will not work
+            flush();            // Unless both are called !
+        } catch (\Exception $e) {
+            // Process Failed
+            // Notify Main Stream
+            throw new exPayloadPerformFailed('failed', $triesCount, $payLoad, $e);
+        }
     }
 
     // Options:
@@ -190,38 +277,26 @@ class Worker
     }
 
     /**
-     * Give Storage Object To Worker
+     * Get Max Tries On Failed Job
      *
-     * @param iDataStore $storage
-     *
-     * @return $this
+     * @return int
      */
-    function giveStorage(iDataStore $storage)
+    function getMaxTries()
     {
-        if ($this->storage)
-            throw new exImmutable(sprintf(
-                'Storage (%s) is given.'
-                , \Poirot\Std\flatten($this->storage)
-            ));
-
-
-        $this->storage = $storage;
-        return $this;
+        return $this->maxTries;
     }
 
     /**
-     * Storage
+     * Set Max Tries On Failed Job
      *
-     * @return iDataStore
+     * @param int $maxTries
+     *
+     * @return $this
      */
-    protected function _getStorage()
+    function setMaxTries($maxTries)
     {
-        if (! $this->storage) {
-            $realm = str_replace('\\', '_', get_class($this));
-            $this->giveStorage( new FlatFileStore($realm.'__'.$this->workerID) );
-        }
-
-        return $this->storage;
+        $this->maxTries = (int) $maxTries;
+        return $this;
     }
 
     /**
@@ -264,7 +339,7 @@ class Worker
     /**
      * Get Events
      *
-     * @return iEvent
+     * @return iEventHeap
      */
     function event()
     {
@@ -277,5 +352,13 @@ class Worker
 
     // ..
 
-
+    private function _attachDefaultEvents()
+    {
+        # Throw Exception if exception not handle on Error Event
+        $this->event()->on(
+            EventHeapOfWorker::EVENT_PAYLOAD_RECEIVED
+            , new ListenerExecutePayload
+            , 100
+        );
+    }
 }

@@ -92,3 +92,62 @@ while ( $payload = $qAggregate->pop() ) {
 }
 
 ```
+
+## Worker
+
+```php
+$client     = \Module\MongoDriver\Actions::Driver()->getClient('master');
+$collection = $client->selectCollection('papioniha', 'queue.app');
+
+$queue = new MongoQueue($collection);
+
+
+# Build Aggregate Queue
+#
+$qAggregate = new AggregateQueue([
+    'threads_high' => [ $queue, 9 ],
+    'threads'      => [ $queue, 2 ],
+    'will_failed'  => [ $queue, 2 ],
+]);
+
+function will_failed($arg)
+{
+    static $failed = [];
+    if (!isset($failed[$arg])) {
+        echo date('H:i:s').' > '.$arg.' Will Failed; and retry again.'.'<br/>';
+        $failed[$arg] = true;
+        throw new \Exception();
+
+    } else {
+        echo date('H:i:s').' > '.$arg.' Recovering Failed.'.'<br/>';
+    }
+
+}
+
+# Add To Queue
+#
+for ($i =1; $i<=1000; $i++) {
+    $message = [ 'ver'=>'0.1', 'fun'=> 'print_r', 'args'=> ["<h4> ($i) From High</h4>"] ];
+    $qAggregate->push(new BasePayload($message), 'threads_high');
+}
+
+# Add To Queue
+#
+for ($i =1; $i<=1000; $i++) {
+    $message = [ 'ver'=>'0.1', 'fun'=> 'print_r', 'args'=> ["<h5> ($i) Normal</h5>"] ];
+    $qAggregate->push(new BasePayload($message), 'threads');
+}
+
+# Add To Queue
+#
+for ($i =1; $i<=100; $i++) {
+    $message = [ 'ver'=>'0.1', 'fun'=> '\Module\OAuth2\Actions\User\will_failed', 'args' => [ random_int(1, 100) ] ];
+    $qAggregate->push(new BasePayload($message), 'will_failed');
+}
+
+$worker = new Worker('my_worker', $qAggregate, [
+    'built_in_queue' => $queue,
+]);
+
+$worker->go();
+```

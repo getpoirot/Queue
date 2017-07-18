@@ -97,6 +97,8 @@ class AggregateQueue
                 $queue  = $this->queues[$channel];
                 if ($payload = $queue->pop($channel))
                     break;
+                /*else
+                    echo "Channel ($channel) Was Empty";*/
             }
 
         } else {
