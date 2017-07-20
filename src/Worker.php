@@ -214,6 +214,10 @@ class Worker
         }
 
         try {
+
+            if ( ob_get_level() )
+                ## clean output buffer, display just error page
+                ob_end_clean();
             ob_start();
 
             $this->event()->trigger(
@@ -222,13 +226,15 @@ class Worker
             );
 
             ob_end_flush(); // Strange behaviour, will not work
-            flush();            // Unless both are called !
+            flush();        // Unless both are called !
+
         } catch (\Exception $e) {
             // Process Failed
             // Notify Main Stream
             throw new exPayloadPerformFailed('failed', $triesCount, $payLoad, $e);
         }
     }
+
 
     // Options:
 
