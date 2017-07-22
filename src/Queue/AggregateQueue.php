@@ -263,7 +263,7 @@ class AggregateQueue
 
         if ( isset($this->queues[$channel]) )
             throw new \RuntimeException(sprintf(
-                'Channel (%s) is fill with (%s).'
+                'Channel (%s) is currently filled with (%s) and is not empty.'
                 , $orig , get_class( $this->queues[$channel] )
             ));
 

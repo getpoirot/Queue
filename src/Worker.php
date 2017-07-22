@@ -20,8 +20,9 @@ class Worker
     extends ConfigurableSetter
     implements iEventProvider
 {
+    protected $_worker_id;
     /** @var string Worker name */
-    protected $workerID;
+    protected $workerName;
     /** @var AggregateQueue */
     protected $queue;
 
@@ -30,33 +31,50 @@ class Worker
     /** @var iQueueDriver */
     protected $builtinQueue;
 
+
     protected $maxTries = 3;
     /** @var int Second(s) */
     protected $blockingInterval = 3;
     /** @var int Second(s) */
-    protected $sleep = 0;
+    protected $sleep = 1;
 
 
     /**
      * Worker constructor.
      *
-     * @param string         $workerID
+     * @param string         $workerName
      * @param AggregateQueue $queue
      * @param array          $settings
      */
-    function __construct($workerID, AggregateQueue $queue, $settings = null)
+    function __construct($workerName, AggregateQueue $queue, $settings = null)
     {
-        $this->workerID  = (string) $workerID;
+        $this->workerName  = (string) $workerName;
+
         $this->queue = $queue;
 
         if ($settings !== null)
             parent::__construct($settings);
-
     }
 
     protected function __init()
     {
         $this->_attachDefaultEvents();
+
+
+        $self = $this;
+        register_shutdown_function(function () use ($self) {
+            $self->__destruct();
+        });
+    }
+
+    /**
+     * Get Worker Name
+     *
+     * @return string
+     */
+    function getWorkerName()
+    {
+        return $this->workerName;
     }
 
     /**
@@ -66,14 +84,17 @@ class Worker
      */
     function getWorkerID()
     {
-        return $this->workerID;
+        if (! $this->_worker_id )
+            $this->_worker_id  = uniqid();
+
+        return $this->_worker_id;
     }
 
+
     /**
-     * Go Running The Worker Processes
      *
      */
-    function go()
+    function goUntilEmpty()
     {
         # Achieve Max Execution Time
         #
@@ -84,7 +105,9 @@ class Worker
         # Add Default Queues To Control Follow
         #
         $failedQueue  = $this->_getBuiltInQueue();
-        $this->queue->addQueue('failed', $failedQueue, 9);
+        if (! in_array('failed', $this->queue->listQueues()) )
+            // Check whether queue with name failed exists or not
+            $this->queue->addQueue('failed', $failedQueue, 9);
 
 
         # Go For Jobs
@@ -104,11 +127,10 @@ class Worker
                     , $this->getBlockingInterval()
                 );
 
-                if ($originPayload === null) {
+                if ($originPayload === null)
                     // Queue is empty
-                    sleep( $this->getBlockingInterval() );
-                    continue;
-                }
+                    break;
+
 
 
                 ## Push To Process Payload and Release Queue So Child Processes can continue
@@ -151,6 +173,7 @@ class Worker
                     , $this->getMaxTries()
                     , $this->getBlockingInterval()
                 );
+
             }
             catch (exPayloadMaxTriesExceed $e) {
                 // Log Failed Messages
@@ -181,12 +204,26 @@ class Worker
             if ( isset($processPayload) )
                 $this->_getBuiltInQueue()->release($processPayload);
 
+        }
+    }
+
+    /**
+     * Go Running The Worker Processes
+     *
+     */
+    function goWait()
+    {
+        # Go For Jobs
+        #
+        while ( 1 )
+        {
+            // TODO smart sleep time
+            $this->goUntilEmpty();
 
             if ($sleep = $this->getSleep())
                 // Take a breath between hooks
                 sleep($sleep);
         }
-
     }
 
     /**
@@ -366,5 +403,10 @@ class Worker
             , new ListenerExecutePayload
             , 100
         );
+    }
+
+    function __destruct()
+    {
+
     }
 }
