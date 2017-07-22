@@ -23,7 +23,10 @@ use Poirot\Storage\Interchange\SerializeInterchange;
  *   "_id": NumberLong(1),
  *   "queue": NumberLong(1)
  * }
- *
+ * {
+ *   "pop": NumberLong(1)
+ *   "queue": NumberLong(1)
+ * }
  */
 class MongoQueue
     implements iQueueDriver
@@ -74,6 +77,7 @@ class MongoQueue
                     'queue'   => $this->_normalizeQueueName($queue),
                     'payload' => new MongoDB\BSON\Binary($sPayload, MongoDB\BSON\Binary::TYPE_GENERIC),
                     'created_timestamp' => time(),
+                    'pop'     => false, // not yet popped; against race condition
                 ]
             );
         } catch (\Exception $e) {
@@ -104,9 +108,13 @@ class MongoQueue
     function pop($queue = null)
     {
         try {
-            $queued = $this->collection->findOne(
+            $queued = $this->collection->findOneAndUpdate(
                 [
                     'queue' => $this->_normalizeQueueName($queue),
+                    'pop'   => false,
+                ]
+                , [
+                    '$set' => ['pop' => true]
                 ]
                 , [
                     // pick last one in the queue
