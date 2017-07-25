@@ -36,7 +36,7 @@ class Worker
     /** @var int Second(s) */
     protected $blockingInterval = 3;
     /** @var int Second(s) */
-    protected $sleep = 1;
+    protected $sleep = 0.5 * 1000000;
 
 
     /**
@@ -93,6 +93,7 @@ class Worker
 
     /**
      *
+     * @return int Executed job
      */
     function goUntilEmpty()
     {
@@ -112,6 +113,7 @@ class Worker
 
         # Go For Jobs
         #
+        $jobExecuted = 0;
         while ( 1 )
         {
             try {
@@ -205,24 +207,43 @@ class Worker
                 $this->_getBuiltInQueue()->release($processPayload);
 
         }
+
+        return $jobExecuted;
     }
 
     /**
      * Go Running The Worker Processes
      *
+     * @param int $maxExecution
      */
-    function goWait()
+    function goWait($maxExecution = null)
     {
         # Go For Jobs
         #
+        $jobExecution = 0; $sleep = 0;
         while ( 1 )
         {
-            // TODO smart sleep time
-            $this->goUntilEmpty();
+            if ( 0 == $executed = $this->goUntilEmpty() ) {
+                // List is Empty; Smart Sleep
+                $sleep += 100000;
+                usleep($sleep);
+                if ($sleep > 2 * 1000000)
+                    // Sleep more than 2 second not allowed!!
+                    $sleep = 100000;
 
-            if ($sleep = $this->getSleep())
+                continue;
+            }
+
+            $jobExecution += $executed;
+            if ($jobExecution >= $maxExecution)
+                // Maximum Execution Task Exceed!!
+                break;
+
+            if ( $sleep = $this->getSleep() )
                 // Take a breath between hooks
-                sleep($sleep);
+                usleep($sleep);
+
+            $sleep = 0;
         }
     }
 
@@ -299,7 +320,7 @@ class Worker
     /**
      * Get Sleep Time Between Payload Retrievals
      *
-     * @return int Second
+     * @return int Microsecond
      */
     function getSleep()
     {
@@ -309,7 +330,7 @@ class Worker
     /**
      * Set Sleep Time Between Payload Retrievals
      *
-     * @param int $sleep Second
+     * @param int $sleep Microsecond
      *
      * @return $this
      */
