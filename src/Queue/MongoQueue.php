@@ -76,6 +76,7 @@ class MongoQueue
                     '_id'     => $uid = new MongoDB\BSON\ObjectID(),
                     'queue'   => $this->_normalizeQueueName($queue),
                     'payload' => new MongoDB\BSON\Binary($sPayload, MongoDB\BSON\Binary::TYPE_GENERIC),
+                    'payload_humanize' => $sPayload,
                     'created_timestamp' => time(),
                     'pop'     => false, // not yet popped; against race condition
                 ]
