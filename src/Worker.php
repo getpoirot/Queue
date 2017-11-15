@@ -181,7 +181,11 @@ class Worker
                 // Log Failed Messages
                 $this->event()->trigger(
                     EventHeapOfWorker::EVENT_PAYLOAD_FAILURE
-                    , [ 'payload' => $e->getPayload() ]
+                    , [
+                        'workerName' => $this->workerName,
+                        'payload' => $e->getPayload(),
+                        'exception' => $e
+                    ]
                 );
             }
             catch (\Exception $e) {

@@ -10,7 +10,8 @@ class EventHeapOfWorker
     extends EventHeap
 {
     const EVENT_PAYLOAD_RECEIVED = 'worker.payload.received';
-    const EVENT_PAYLOAD_FAILURE  = 'worker.after.exec';
+    const EVENT_PAYLOAD_FAILURE  = 'worker.max.retries.exceeded';
+    const EVENT_PAYLOAD_SUCCEED  = 'worker.after.successful.exec';
 
     /**
      * Initialize
@@ -23,6 +24,7 @@ class EventHeapOfWorker
         // attach default event names:
         $this->bind(new Event(self::EVENT_PAYLOAD_RECEIVED));
         $this->bind(new Event(self::EVENT_PAYLOAD_FAILURE));
+        $this->bind(new Event(self::EVENT_PAYLOAD_SUCCEED));
     }
 
     /**
