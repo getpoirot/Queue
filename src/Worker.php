@@ -162,7 +162,9 @@ class Worker
                 $this->performPayload($processPayload);
 
             }
+
             catch (exPayloadPerformFailed $e) {
+
                 ## Push Back Payload as Failed Message To Queue Again For Next Process
                 #
                 \Poirot\Std\reTry(
@@ -177,6 +179,7 @@ class Worker
                 );
 
             }
+
             catch (exPayloadMaxTriesExceed $e) {
                 // Log Failed Messages
                 $this->event()->trigger(
@@ -188,21 +191,38 @@ class Worker
                     ]
                 );
             }
+
             catch (\Exception $e) {
 
-                // Origin Released from queue and process failed
-                // So It Must Back To List Again
-                if ( isset($flagOriginReleased) ) {
-                    \Poirot\Std\reTry(
-                        function () use ($originPayload) {
-                            // Push Payload Back To Queue
-                            return $this->queue->push($originPayload, $originPayload->getQueue());
-                        }
-                        , $this->getMaxTries()
-                        , $this->getBlockingInterval()
-                    );
-                }
+                // Logical Exceptions are OK and not considered as critical errors.
 
+                if ( $e instanceof \LogicException ) {
+
+                    // Log Failed Messages
+                    $this->event()->trigger(
+                        EventHeapOfWorker::EVENT_PAYLOAD_FAILURE
+                        , [
+                            'workerName' => $this->workerName,
+                            'payload' => $e->getPayload(),
+                            'exception' => $e
+                        ]
+                    );
+
+                } else {
+
+                    // Origin Released from queue and process failed
+                    // So It Must Back To List Again
+                    if ( isset($flagOriginReleased) ) {
+                        \Poirot\Std\reTry(
+                            function () use ($originPayload) {
+                                // Push Payload Back To Queue
+                                return $this->queue->push($originPayload, $originPayload->getQueue());
+                            }
+                            , $this->getMaxTries()
+                            , $this->getBlockingInterval()
+                        );
+                    }
+                }
             }
 
             ## Release Process From Queue
@@ -289,6 +309,10 @@ class Worker
 
             ob_end_flush(); // Strange behaviour, will not work
             flush();        // Unless both are called !
+
+        } catch (\LogicException $e) {
+            // Exception is logical and its ok to throw
+            throw $e;
 
         } catch (\Exception $e) {
             // Process Failed
