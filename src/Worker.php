@@ -171,8 +171,9 @@ class Worker
                     function() use ($e) {
                         // Build Message For Performer
                         // @see self::performPayload
-                        $message = [ 'failed', $e->getTries(), $e->getWhy()->getMessage(), $e->getPayload() ];
-                        return $this->_getBuiltInQueue()->push( new BasePayload($message), 'failed' );
+                        $message = [ 'failed', $e->getTries()+1, $e->getWhy()->getMessage(), $e->getPayload() ];
+                        $originPayload = new BasePayload($message);
+                        return $this->_getBuiltInQueue()->push($originPayload, 'failed' );
                     }
                     , $this->getMaxTries()
                     , $this->getBlockingInterval()
@@ -203,7 +204,7 @@ class Worker
                         EventHeapOfWorker::EVENT_PAYLOAD_FAILURE
                         , [
                             'workerName' => $this->workerName,
-                            'payload' => $e->getPayload(),
+                            'payload'    => null,
                             'exception' => $e
                         ]
                     );
@@ -229,6 +230,17 @@ class Worker
             #
             if ( isset($processPayload) )
                 $this->_getBuiltInQueue()->release($processPayload);
+
+
+
+            // Log Failed Messages
+            $this->event()->trigger(
+                EventHeapOfWorker::EVENT_PAYLOAD_SUCCEED
+                , [
+                    'worker'   => $this,
+                    'payload'  => (isset($originPayload)) ? $originPayload : null,
+                ]
+            );
 
         }
 
@@ -280,18 +292,18 @@ class Worker
      */
     function performPayload(iPayloadQueued $processPayload)
     {
-        $payLoad    = $processPayload->getPayload();
+        $payLoadData    = $processPayload->getPayload();
         $triesCount = 0;
 
-        if ( is_array($payLoad) ) {
+        if ( is_array($payLoadData) ) {
             // ['failed', 4, 'Request to server X was timeout.', ['ver' => '0.1', 'fun' => 'echo']]
-            @list($failedTag, $triesCount, $exceptionWhy) = $payLoad;
+            @list($failedTag, $triesCount, $exceptionWhy) = $payLoadData;
             if ($failedTag === 'failed') {
                 if ( $triesCount > $this->getMaxTries() )
-                    throw new exPayloadMaxTriesExceed($payLoad, 'Max Tries Exceeds.' . $exceptionWhy, null);
+                    throw new exPayloadMaxTriesExceed($payLoadData, 'Max Tries Exceeds.' . $exceptionWhy, null);
 
                 // Retrieve Original Payload
-                $payLoad = end($payLoad);
+                $payLoadData = end($payLoadData);
             }
         }
 
@@ -304,7 +316,7 @@ class Worker
 
             $this->event()->trigger(
                 EventHeapOfWorker::EVENT_PAYLOAD_RECEIVED
-                , [ 'payload' => $payLoad ]
+                , [ 'payload' => $payLoadData, 'worker' => $this ]
             );
 
             ob_end_flush(); // Strange behaviour, will not work
@@ -317,7 +329,7 @@ class Worker
         } catch (\Exception $e) {
             // Process Failed
             // Notify Main Stream
-            throw new exPayloadPerformFailed('failed', $triesCount, $payLoad, $e);
+            throw new exPayloadPerformFailed('failed', $triesCount, $payLoadData, $e);
         }
     }
 

@@ -2,6 +2,8 @@
 namespace Poirot\Queue\Worker\Events\PayloadReceived;
 
 use Poirot\Events\Listener\aListener;
+use Poirot\Std\ErrorStack;
+use Predis\Response\Error;
 
 
 class ListenerExecutePayload
@@ -30,10 +32,14 @@ class ListenerExecutePayload
 
         // We Can Consider Version
 
+        ErrorStack::handleError(E_ALL);
         if ( isset($payload['args']) && !empty($payload['args']) )
             call_user_func_array($payload['fun'], $payload['args']);
         else
             call_user_func($payload['fun']);
+
+        if ( $ex = ErrorStack::handleDone() )
+            throw $ex;
     }
 
     function _isExecutableMessage($payload)

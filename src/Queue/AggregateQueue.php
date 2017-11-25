@@ -43,12 +43,10 @@ class AggregateQueue
     {
         if ($queue === null)
         {
-            $payload = null;
-
             ## Push To Channels With Max Priority Weight
             #
             $weights = $this->weights;
-            while ( empty($weights) )
+            while (! empty($weights) )
             {
                 $channel = \Poirot\Queue\mathAlias($weights);
                 unset($weights[$channel]);
