@@ -204,8 +204,8 @@ class Worker
                         EventHeapOfWorker::EVENT_PAYLOAD_FAILURE
                         , [
                             'workerName' => $this->workerName,
-                            'payload'    => null,
-                            'exception' => $e
+                            'payload'    => $processPayload,
+                            'exception'  => $e
                         ]
                     );
 
@@ -232,17 +232,18 @@ class Worker
                 $this->_getBuiltInQueue()->release($processPayload);
 
 
-
-            // Log Failed Messages
-            $this->event()->trigger(
-                EventHeapOfWorker::EVENT_PAYLOAD_SUCCEED
-                , [
-                    'worker'   => $this,
-                    'payload'  => (isset($originPayload)) ? $originPayload : null,
-                ]
-            );
-
+            if (! isset($e) ) {
+                // Log Failed Messages
+                $this->event()->trigger(
+                    EventHeapOfWorker::EVENT_PAYLOAD_SUCCEED
+                    , [
+                        'worker'   => $this,
+                        'payload'  => (isset($originPayload)) ? $originPayload : null,
+                    ]
+                );
+            }
         }
+
 
         return $jobExecuted;
     }
