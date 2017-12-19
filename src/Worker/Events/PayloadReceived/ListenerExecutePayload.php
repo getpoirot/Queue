@@ -3,7 +3,6 @@ namespace Poirot\Queue\Worker\Events\PayloadReceived;
 
 use Poirot\Events\Listener\aListener;
 use Poirot\Std\ErrorStack;
-use Predis\Response\Error;
 
 
 class ListenerExecutePayload

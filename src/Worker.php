@@ -20,6 +20,9 @@ class Worker
     extends ConfigurableSetter
     implements iEventProvider
 {
+    const EVENT_PRIO_EXECUTE_PAYLOAD = 100;
+
+
     protected $_worker_id;
     /** @var string Worker name */
     protected $workerName;
@@ -463,7 +466,7 @@ class Worker
         $this->event()->on(
             EventHeapOfWorker::EVENT_PAYLOAD_RECEIVED
             , new ListenerExecutePayload
-            , 100
+            , self::EVENT_PRIO_EXECUTE_PAYLOAD
         );
     }
 
