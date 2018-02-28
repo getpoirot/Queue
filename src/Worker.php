@@ -182,6 +182,17 @@ class Worker
                     , $this->getBlockingInterval()
                 );
 
+
+                // Log Failed Messages
+                $this->event()->trigger(
+                    EventHeapOfWorker::EVENT_PAYLOAD_RETRY
+                    , [
+                        'workerName' => $this->workerName,
+                        'payload'    => $processPayload,
+                        'exception'  => $e
+                    ]
+                );
+
             }
 
             catch (exPayloadMaxTriesExceed $e) {
