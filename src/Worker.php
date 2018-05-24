@@ -196,6 +196,7 @@ class Worker
             }
 
             catch (exPayloadMaxTriesExceed $e) {
+
                 // Log Failed Messages
                 $this->event()->trigger(
                     EventHeapOfWorker::EVENT_PAYLOAD_FAILURE
@@ -315,7 +316,11 @@ class Worker
             @list($failedTag, $triesCount, $exceptionWhy) = $payLoadData;
             if ($failedTag === 'failed') {
                 if ( $triesCount > $this->getMaxTries() )
-                    throw new exPayloadMaxTriesExceed($payLoadData, 'Max Tries Exceeds.' . $exceptionWhy, null);
+                    throw new exPayloadMaxTriesExceed(
+                        $processPayload
+                        , sprintf('Max Tries Exceeds After %s Try.', $triesCount) . $exceptionWhy
+                        , null
+                    );
 
                 // Retrieve Original Payload
                 $payLoadData = end($payLoadData);
