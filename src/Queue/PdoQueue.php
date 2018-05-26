@@ -35,7 +35,7 @@ class PdoQueue
     /**
      * Push To Queue
      *
-     * @param iPayload $payload Serializable payload
+     * @param iPayload|iPayloadQueued $payload Serializable payload
      * @param string   $queue
      *
      * @return iPayloadQueued
@@ -43,15 +43,31 @@ class PdoQueue
      */
     function push($payload, $queue = null)
     {
-        $payload  = $payload->getPayload();
-        $sPayload = $this->_interchangeable()
-            ->makeForward($payload);
+        $payload = clone $payload;
 
-        try {
 
-            $uid   = \Poirot\Std\generateUniqueIdentifier(24);
-            $qName = $this->_normalizeQueueName($queue);
-            $time  = time();
+        if (null === $queue && $payload instanceof iPayloadQueued)
+            $queue = $payload->getQueue();
+
+        try
+        {
+            $qPayload = $payload;
+            if (! $payload instanceof iPayloadQueued ) {
+                $qPayload = new QueuedPayload($payload);
+                $qPayload = $qPayload
+                    ->withUID( \Poirot\Std\generateUniqueIdentifier(24) )
+                ;
+            }
+
+            $qPayload = $qPayload->withQueue( $this->_normalizeQueueName($queue) );
+
+
+            ## Persist Queued Payload
+            #
+            $uid      = $qPayload->getUID();
+            $qName    = $qPayload->getQueue();
+            $sPayload = addslashes(serialize($qPayload));
+            $time     = $qPayload->getCreatedTimestamp();
 
             $sql = "INSERT INTO `Queue` 
                    (`task_id`, `queue_name`, `payload`, `created_timestamp`, `is_pop`)
@@ -63,16 +79,13 @@ class PdoQueue
 
 
         } catch (\Exception $e) {
-            throw new exWriteError('Error While Write To PDO Client.', $e->getCode(), $e);
+            throw new exWriteError($e->getMessage(), $e->getCode(), $e);
         }
 
-        $queued = new QueuedPayload($payload);
-        $queued = $queued
-            ->withUID( (string) $uid)
-            ->withQueue($queue)
-        ;
 
-        return $queued;
+        ## Persist Queue Job
+        #
+        return $qPayload;
     }
 
     /**
@@ -106,7 +119,7 @@ class PdoQueue
 
             // Update
             //
-            if ( $queued ) {
+            if ($queued ) {
                 $sql = "UPDATE `Queue` SET `is_pop` = 1 WHERE `task_id` = '{$queued['task_id']}';";
                 $this->conn->exec($sql);
             }
@@ -123,16 +136,7 @@ class PdoQueue
             return null;
 
 
-
-        $payload = $this->_interchangeable()
-            ->retrieveBackward($queued['payload']);
-
-        $payload = new QueuedPayload($payload);
-        $payload = $payload
-            ->withQueue($queue)
-            ->withUID( (string) $queued['task_id'] )
-        ;
-
+        $payload = unserialize($queued['payload']);
         return $payload;
     }
 
@@ -186,24 +190,15 @@ class PdoQueue
             $stm->execute();
             $stm->setFetchMode(\PDO::FETCH_ASSOC);
 
-            $queued = $stm->fetch();
+            if (! $queued = $stm->fetch() )
+                return null;
 
         } catch (\Exception $e) {
             throw new exReadError('Error While Read From MySql Client.', $e->getCode(), $e);
         }
 
 
-        if (! $queued )
-            return null;
-
-
-        $payload = $this->_interchangeable()
-            ->retrieveBackward( $queued['payload'] );
-
-        $payload = new QueuedPayload($payload);
-        $payload = $payload->withQueue($queue)
-            ->withUID( (string) $queued['task_id'] );
-
+        $payload = unserialize($queued['payload']);
         return $payload;
     }
 

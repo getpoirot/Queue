@@ -12,7 +12,7 @@ class EventHeapOfWorker
     const EVENT_PAYLOAD_RECEIVED = 'worker.payload.received';
     const EVENT_PAYLOAD_FAILURE  = 'worker.max.retries.exceeded';
     const EVENT_PAYLOAD_SUCCEED  = 'worker.after.successful.exec';
-    const EVENT_PAYLOAD_RETRY    = 'worker.perform.fail';
+    const EVENT_PAYLOAD_ERROR    = 'worker.perform.fail';
 
 
     /**
@@ -27,7 +27,7 @@ class EventHeapOfWorker
         $this->bind(new Event(self::EVENT_PAYLOAD_RECEIVED));
         $this->bind(new Event(self::EVENT_PAYLOAD_FAILURE));
         $this->bind(new Event(self::EVENT_PAYLOAD_SUCCEED));
-        $this->bind(new Event(self::EVENT_PAYLOAD_RETRY));
+        $this->bind(new Event(self::EVENT_PAYLOAD_ERROR));
     }
 
     /**

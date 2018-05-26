@@ -14,7 +14,7 @@ interface iQueueDriver
     /**
      * Push To Queue
      *
-     * @param iPayload $payload Serializable payload
+     * @param iPayload|iPayloadQueued $payload Serializable payload
      * @param string   $queue
      *
      * @return iPayloadQueued

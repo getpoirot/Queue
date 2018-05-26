@@ -7,7 +7,7 @@ use Poirot\Queue\Exception\Worker\exPayloadMaxTriesExceed;
 use Poirot\Queue\Exception\Worker\exPayloadPerformFailed;
 use Poirot\Queue\Interfaces\iPayloadQueued;
 use Poirot\Queue\Interfaces\iQueueDriver;
-use Poirot\Queue\Payload\BasePayload;
+use Poirot\Queue\Payload\FailedPayload;
 use Poirot\Queue\Queue\AggregateQueue;
 use Poirot\Queue\Queue\InMemoryQueue;
 use Poirot\Queue\Worker\EventHeapOfWorker;
@@ -35,9 +35,9 @@ class Worker
     protected $builtinQueue;
 
 
-    protected $maxTries = 3;
+    protected $maxTries = 5;
     /** @var int Second(s) */
-    protected $blockingInterval = 3;
+    protected $blockingInterval = 3000;
     /** @var int Second(s) */
     protected $sleep = 0.5 * 1000000;
 
@@ -119,64 +119,67 @@ class Worker
         $jobExecuted = 0;
         while ( 1 )
         {
+            $e = null;
+
+
+            ## Pop a Payload from Queue
+            #
+            if (null === $originPayload = \Poirot\Std\reTry(
+                function () {
+                    // Pop Payload form Queue
+                    return $this->queue->pop();
+                }
+                , $this->getMaxTries()
+                , $this->getBlockingInterval()
+            ))
+                // Queue is empty
+                break;
+
+
+
+            ## Push To Process Payload and Release Queue So Child Processes can continue
+            #
+            $processPayload = \Poirot\Std\reTry(
+                function() use ($originPayload) {
+                    return $this->_getBuiltInQueue()->push($originPayload, 'processing');
+                }
+                , $this->getMaxTries()
+                , $this->getBlockingInterval()
+            );
+
+
+            ## Release Queue So Child Processes can continue
+            #
+            $flagOriginReleased = \Poirot\Std\reTry(
+                function() use ($originPayload) {
+                    $this->queue->release($originPayload);
+                    return true;
+                }
+                , $this->getMaxTries()
+                , $this->getBlockingInterval()
+            );
+
+
+
             try {
-
-                ## Pop a Payload from Queue
-                #
-                $originPayload = \Poirot\Std\reTry(
-                    function () {
-                        // Pop Payload form Queue
-                        return $this->queue->pop();
-                    }
-                    , $this->getMaxTries()
-                    , $this->getBlockingInterval()
-                );
-
-                if ($originPayload === null)
-                    // Queue is empty
-                    break;
-
-
-
-                ## Push To Process Payload and Release Queue So Child Processes can continue
-                #
-                $processPayload = \Poirot\Std\reTry(
-                    function() use ($originPayload) {
-                        return $this->_getBuiltInQueue()->push($originPayload, 'processing');
-                    }
-                    , $this->getMaxTries()
-                    , $this->getBlockingInterval()
-                );
-
-                ## Release Queue So Child Processes can continue
-                #
-                $flagOriginReleased = \Poirot\Std\reTry(
-                    function() use ($originPayload) {
-                        $this->queue->release($originPayload);
-                        return true;
-                    }
-                    , $this->getMaxTries()
-                    , $this->getBlockingInterval()
-                );
-
 
                 ## Perform Payload Execution
                 #
                 $this->performPayload($processPayload);
 
             }
-
-            catch (exPayloadPerformFailed $e) {
-
+            catch (exPayloadPerformFailed $e)
+            {
                 ## Push Back Payload as Failed Message To Queue Again For Next Process
                 #
                 \Poirot\Std\reTry(
                     function() use ($e) {
                         // Build Message For Performer
                         // @see self::performPayload
-                        $message = [ 'failed', $e->getTries()+1, $e->getWhy()->getMessage(), $e->getPayload() ];
-                        $originPayload = new BasePayload($message);
-                        return $this->_getBuiltInQueue()->push($originPayload, 'failed' );
+                        $failedPayload = $e->getPayload();
+                        $failedPayload->incCountRetries();
+
+                        return $this->_getBuiltInQueue()->push($failedPayload, 'failed' );
                     }
                     , $this->getMaxTries()
                     , $this->getBlockingInterval()
@@ -185,7 +188,7 @@ class Worker
 
                 // Log Failed Messages
                 $this->event()->trigger(
-                    EventHeapOfWorker::EVENT_PAYLOAD_RETRY
+                    EventHeapOfWorker::EVENT_PAYLOAD_ERROR
                     , [
                         'workerName' => $this->workerName,
                         'payload'    => $processPayload,
@@ -252,8 +255,8 @@ class Worker
                 $this->event()->trigger(
                     EventHeapOfWorker::EVENT_PAYLOAD_SUCCEED
                     , [
-                        'worker'   => $this,
-                        'payload'  => (isset($originPayload)) ? $originPayload : null,
+                        'worker'  => $this,
+                        'payload' => (isset($originPayload)) ? $originPayload : null,
                     ]
                 );
             }
@@ -308,24 +311,20 @@ class Worker
      */
     function performPayload(iPayloadQueued $processPayload)
     {
-        $payLoadData    = $processPayload->getPayload();
         $triesCount = 0;
 
-        if ( is_array($payLoadData) ) {
-            // ['failed', 4, 'Request to server X was timeout.', ['ver' => '0.1', 'fun' => 'echo']]
-            @list($failedTag, $triesCount, $exceptionWhy) = $payLoadData;
-            if ($failedTag === 'failed') {
-                if ( $triesCount > $this->getMaxTries() )
-                    throw new exPayloadMaxTriesExceed(
-                        $processPayload
-                        , sprintf('Max Tries Exceeds After %s Try.', $triesCount) . $exceptionWhy
-                        , null
-                    );
-
-                // Retrieve Original Payload
-                $payLoadData = end($payLoadData);
-            }
+        if ($processPayload instanceof FailedPayload) {
+            if ( $processPayload->getCountRetries() > $this->getMaxTries() )
+                throw new exPayloadMaxTriesExceed(
+                    $processPayload
+                    , sprintf('Max Tries Exceeds After %s Tries.', $processPayload->getCountRetries())
+                    , null
+                );
         }
+
+
+        $payLoadData = $processPayload->getData();
+
 
         try {
 
@@ -336,7 +335,7 @@ class Worker
 
             $this->event()->trigger(
                 EventHeapOfWorker::EVENT_PAYLOAD_RECEIVED
-                , [ 'payload' => $payLoadData, 'worker' => $this ]
+                , [ 'payload' => $processPayload, 'data' => $payLoadData, 'worker' => $this ]
             );
 
             ob_end_flush(); // Strange behaviour, will not work
@@ -349,7 +348,13 @@ class Worker
         } catch (\Exception $e) {
             // Process Failed
             // Notify Main Stream
-            throw new exPayloadPerformFailed('failed', $triesCount, $payLoadData, $e);
+            if (! $processPayload instanceof FailedPayload)
+                $failedPayload = new FailedPayload($processPayload, $triesCount);
+            else
+                $failedPayload = $processPayload;
+
+
+            throw new exPayloadPerformFailed($failedPayload, $e);
         }
     }
 

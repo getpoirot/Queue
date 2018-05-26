@@ -13,7 +13,7 @@ use Poirot\Queue\Interfaces\iPayload;
 class BasePayload
     implements iPayload
 {
-    protected $payload;
+    protected $data;
 
 
     /**
@@ -23,7 +23,7 @@ class BasePayload
      */
     function __construct($payload)
     {
-        $this->payload = $payload;
+        $this->data = $payload;
     }
 
 
@@ -32,22 +32,46 @@ class BasePayload
      *
      * @return mixed Serializable content
      */
-    function getPayload()
+    function getData()
     {
-        return $this->payload;
+        return $this->data;
     }
 
     /**
      * With Given Payload
      *
-     * @param mixed $payload Serializable payload
+     * @param mixed $data Serializable payload
      *
      * @return $this
      */
-    function withPayload($payload)
+    function withData($data)
     {
         $n = clone $this;
-        $n->payload = $payload;
+        $n->data = $data;
         return $n;
+    }
+
+
+    // Implement Serializable:
+
+    /**
+     * @inheritdoc
+     */
+    function serialize()
+    {
+        $s = [
+            'dt' => serialize( $this->getData() )
+        ];
+
+        return serialize($s);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    function unserialize($serialized)
+    {
+        $us = unserialize($serialized);
+        $this->data = unserialize($us['dt']);
     }
 }

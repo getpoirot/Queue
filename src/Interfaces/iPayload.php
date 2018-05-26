@@ -3,11 +3,12 @@ namespace Poirot\Queue\Interfaces;
 
 
 interface iPayload
+    extends \Serializable
 {
     /**
      * Get Payload Content
      *
-     * @return mixed Serializable content
+     * @return array
      */
-    function getPayload();
+    function getData();
 }

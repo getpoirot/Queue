@@ -13,6 +13,13 @@ interface iPayloadQueued
     function getUID();
 
     /**
+     * Get Payload Queued
+     *
+     * @return iPayload
+     */
+    function getPayload();
+
+    /**
      * Get Queue Name
      *
      * @return string Queue name

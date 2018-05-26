@@ -47,20 +47,32 @@ class RedisQueue implements iQueueDriver
      */
     function push($payload, $queue = null)
     {
-        $payload  = $payload->getPayload();
-        $id = \uniqid();
-        $queueName = $this->_normalizeQueueName($queue);
+        $payload  = $payload->getData();
+
+        $uid = ($payload instanceof iPayloadQueued)
+            ? $payload->getUID()
+            : \Poirot\Std\generateUniqueIdentifier(24);
+
+        if ($queue === null && $payload instanceof iPayloadQueued)
+            $queue = $payload->getQueue();
+
+        $qName = $this->_normalizeQueueName($queue);
+
+        $time = ($payload instanceof iPayloadQueued)
+            ? $time = $payload->getCreatedTimestamp()
+            : time();
+
 
         $value = $this->_interchangeable()
             ->makeForward([
-                'id'                => $id,
+                'id'                => $uid,
                 'payload'           => $payload,
-                'created_timestamp' => \time(),
+                'created_timestamp' => $time,
         ]);
 
         try
         {
-            $this->client->lpush($queueName, $value);
+            $this->client->lpush($qName, $value);
         } catch (\Exception $e)
         {
             throw new exWriteError('Error While Writing To Redis Client.', $e->getCode(), $e);
@@ -68,8 +80,8 @@ class RedisQueue implements iQueueDriver
 
         $queued = new QueuedPayload($payload);
         $queued = $queued
-            ->withUID($id)
-            ->withQueue($queue);
+            ->withUID($uid)
+            ->withQueue($qName);
 
         return $queued;
     }

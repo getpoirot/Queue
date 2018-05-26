@@ -66,18 +66,31 @@ class MongoQueue
      */
     function push($payload, $queue = null)
     {
-        $payload  = $payload->getPayload();
+        $payload  = $payload->getData();
         $sPayload = $this->_interchangeable()
             ->makeForward($payload);
+
+        $uid = ($payload instanceof iPayloadQueued)
+            ? $payload->getUID()
+            : new MongoDB\BSON\ObjectID();
+
+        if ($queue === null && $payload instanceof iPayloadQueued)
+            $queue = $payload->getQueue();
+
+        $qName = $this->_normalizeQueueName($queue);
+
+        $time = ($payload instanceof iPayloadQueued)
+            ? $time = $payload->getCreatedTimestamp()
+            : time();
 
         try {
             $this->collection->insertOne(
                 [
-                    '_id'     => $uid = new MongoDB\BSON\ObjectID(),
-                    'queue'   => $this->_normalizeQueueName($queue),
+                    '_id'     => $uid,
+                    'queue'   => $qName,
                     'payload' => new MongoDB\BSON\Binary($sPayload, MongoDB\BSON\Binary::TYPE_GENERIC),
                     'payload_humanize' => $sPayload,
-                    'created_timestamp' => time(),
+                    'created_timestamp' => $time,
                     'pop'     => false, // not yet popped; against race condition
                 ]
             );
@@ -88,7 +101,7 @@ class MongoQueue
         $queued = new QueuedPayload($payload);
         $queued = $queued
             ->withUID( (string) $uid)
-            ->withQueue($queue)
+            ->withQueue($qName)
         ;
 
         return $queued;

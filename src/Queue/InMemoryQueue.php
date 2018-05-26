@@ -25,25 +25,37 @@ class InMemoryQueue
      */
     function push($payload, $queue = null)
     {
-        $payload  = $payload->getPayload();
+        $payload  = $payload->getData();
 
-        $id = uniqid();
+
+        $uid = ($payload instanceof iPayloadQueued)
+            ? $payload->getUID()
+            : \Poirot\Std\generateUniqueIdentifier(24);
+
+        if ($queue === null && $payload instanceof iPayloadQueued)
+            $queue = $payload->getQueue();
+
         $queueName = $this->_normalizeQueueName($queue);
+
+        $time = ($payload instanceof iPayloadQueued)
+            ? $time = $payload->getCreatedTimestamp()
+            : time();
+
 
         if (! isset($this->queues[$queueName]) )
             $this->queues[$queueName] = [];
 
         $ps = &$this->queues[$queueName];
-        $ps[$id] = [
-            'id'      => $id,
+        $ps[$uid] = [
+            'id'      => $uid,
             'queue'   => $queueName,
             'payload' => $payload,
-            'created_timestamp' => time(),
+            'created_timestamp' => $time,
         ];
 
         $queued = new QueuedPayload($payload);
         $queued = $queued
-            ->withUID($id)
+            ->withUID($uid)
             ->withQueue($queue)
         ;
 
