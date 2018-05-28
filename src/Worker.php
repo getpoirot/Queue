@@ -35,7 +35,7 @@ class Worker
     protected $builtinQueue;
 
 
-    protected $maxTries = 5;
+    protected $maxTries = 30;
     /** @var int Second(s) */
     protected $blockingInterval = 3000;
     /** @var int Second(s) */
@@ -190,9 +190,8 @@ class Worker
                 $this->event()->trigger(
                     EventHeapOfWorker::EVENT_PAYLOAD_ERROR
                     , [
-                        'workerName' => $this->workerName,
-                        'payload'    => $processPayload,
-                        'exception'  => $e
+                        'payload'    => $e->getPayload(),
+                        'exception'  => $e->getReason(),
                     ]
                 );
 

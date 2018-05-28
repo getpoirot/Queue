@@ -11,9 +11,9 @@ use Poirot\Queue\Interfaces\iQueueDriver;
 class AggregateQueue
     implements iQueueDriver
 {
-    /** @var iQueueDriver[string] */
-    protected $queues  = [];
-    protected $weights = [];
+    /** @var []iQueueDriver */
+    protected $channels_queue  = [];
+    protected $channels_weight = [];
 
 
     /**
@@ -25,7 +25,6 @@ class AggregateQueue
     {
         if (null !== $queues)
             $this->setQueues($queues);
-
 
     }
 
@@ -45,14 +44,14 @@ class AggregateQueue
         {
             ## Push To Channels With Max Priority Weight
             #
-            $weights = $this->weights;
+            $weights = $this->channels_weight;
             while (! empty($weights) )
             {
                 $channel = \Poirot\Queue\mathAlias($weights);
                 unset($weights[$channel]);
 
                 /** @var iQueueDriver $queue */
-                $queue  = $this->queues[$channel];
+                $queue  = $this->channels_queue[$channel];
                 if ( $payload = $queue->push($payload, $channel) )
                     break;
             }
@@ -85,14 +84,14 @@ class AggregateQueue
 
             ## Pop From Channels With Max Priority Weight
             #
-            $weights = $this->weights;
+            $weights = $this->channels_weight;
             while (! empty($weights) )
             {
                 $channel = \Poirot\Queue\mathAlias($weights);
                 unset($weights[$channel]);
 
                 /** @var iQueueDriver $queue */
-                $queue  = $this->queues[$channel];
+                $queue  = $this->channels_queue[$channel];
                 if ($payload = $queue->pop($channel))
                     break;
                 /*else
@@ -127,7 +126,7 @@ class AggregateQueue
         if ($queue === null)
         {
             /** @var iQueueDriver $queue */
-            foreach ( $this->queues as $channel => $queue ) {
+            foreach ($this->channels_queue as $channel => $queue ) {
                 if ( $queue->findByID($id, $channel) )
                     $queue->release($id, $queue);
             }
@@ -154,7 +153,7 @@ class AggregateQueue
             $payload = null;
 
             /** @var iQueueDriver $queue */
-            foreach ( $this->queues as $channel => $queue ) {
+            foreach ($this->channels_queue as $channel => $queue ) {
                 if ( $payload = $queue->findByID($id, $channel) )
                     break;
             }
@@ -182,7 +181,7 @@ class AggregateQueue
             $count = 0;
 
             /** @var iQueueDriver $queue */
-            foreach ( $this->queues as $channel => $queue )
+            foreach ($this->channels_queue as $channel => $queue )
                 $count += $queue->size($channel);
 
         } else {
@@ -201,7 +200,7 @@ class AggregateQueue
      */
     function listQueues()
     {
-        return array_keys($this->queues);
+        return array_keys($this->channels_queue);
     }
 
 
@@ -216,14 +215,14 @@ class AggregateQueue
      *   'channel_name' => [iQueueDriver, $weight]
      * ]
      *
-     * @param iQueueDriver[] $queues
+     * @param iQueueDriver[] $channels_queue
      *
      * @return $this
      * @throws \Exception
      */
-    function setQueues(array $queues)
+    function setQueues(array $channels_queue)
     {
-        foreach ( $queues as $channel => $queue ) {
+        foreach ($channels_queue as $channel => $queue ) {
             if (! is_array($queue) )
                 $queue = [$queue];
 
@@ -259,15 +258,15 @@ class AggregateQueue
                 , \Poirot\Std\flatten($queue)
             ));
 
-        if ( isset($this->queues[$channel]) )
+        if ( isset($this->channels_queue[$channel]) )
             throw new \RuntimeException(sprintf(
                 'Channel (%s) is currently filled with (%s) and is not empty.'
-                , $orig , get_class( $this->queues[$channel] )
+                , $orig , get_class( $this->channels_queue[$channel] )
             ));
 
 
-        $this->queues[$channel]  = $queue;
-        $this->weights[$channel] = $weight;
+        $this->channels_queue[$channel]  = $queue;
+        $this->channels_weight[$channel] = $weight;
         return $this;
     }
 
@@ -283,14 +282,14 @@ class AggregateQueue
         $origin  = $channel;
         $channel = $this->_normalizeQueueName($channel);
 
-        if (! isset($this->queues[$channel]) )
+        if (! isset($this->channels_queue[$channel]) )
             throw new exReadError(sprintf(
                 'Channel (%s) is not accessible.'
                 , $origin
             ));
 
 
-        return $this->queues[$channel];
+        return $this->channels_queue[$channel];
     }
 
     /**
