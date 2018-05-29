@@ -190,6 +190,7 @@ class Worker
                 $this->event()->trigger(
                     EventHeapOfWorker::EVENT_PAYLOAD_ERROR
                     , [
+                        'workerName' => $this->workerName,
                         'payload'    => $e->getPayload(),
                         'exception'  => $e->getReason(),
                     ]
