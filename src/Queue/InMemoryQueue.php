@@ -25,41 +25,43 @@ class InMemoryQueue
      */
     function push($payload, $queue = null)
     {
-        $payload  = $payload->getData();
+        $payload = clone $payload;
 
 
-        $uid = ($payload instanceof iPayloadQueued)
-            ? $payload->getUID()
-            : \Poirot\Std\generateUniqueIdentifier(24);
-
-        if ($queue === null && $payload instanceof iPayloadQueued)
+        if (null === $queue && $payload instanceof iPayloadQueued)
             $queue = $payload->getQueue();
 
-        $queueName = $this->_normalizeQueueName($queue);
+        $qPayload = $payload;
+        if (! $payload instanceof iPayloadQueued ) {
+            $qPayload = new QueuedPayload($payload);
+            $qPayload = $qPayload
+                ->withUID( \Poirot\Std\generateUniqueIdentifier(24) )
+            ;
+        }
 
-        $time = ($payload instanceof iPayloadQueued)
-            ? $time = $payload->getCreatedTimestamp()
-            : time();
+        /** @var QueuedPayload $qPayload */
+        $qPayload = $qPayload->withQueue( $this->_normalizeQueueName($queue) );
 
 
-        if (! isset($this->queues[$queueName]) )
-            $this->queues[$queueName] = [];
+        ## Persist Queued Payload
+        #
+        $uid      = $qPayload->getUID();
+        $qName    = $qPayload->getQueue();
+        $time     = $qPayload->getCreatedTimestamp();
 
-        $ps = &$this->queues[$queueName];
+        if (! isset($this->queues[$qName]) )
+            $this->queues[$qName] = [];
+
+        $ps = &$this->queues[$qName];
         $ps[$uid] = [
             'id'      => $uid,
-            'queue'   => $queueName,
-            'payload' => $payload,
+            'queue'   => $qName,
+            'payload' => $qPayload,
             'created_timestamp' => $time,
         ];
 
-        $queued = new QueuedPayload($payload);
-        $queued = $queued
-            ->withUID($uid)
-            ->withQueue($queue)
-        ;
 
-        return $queued;
+        return $qPayload;
     }
 
     /**
@@ -86,11 +88,6 @@ class InMemoryQueue
 
 
         $payload = $item['payload'];
-
-        $payload = new QueuedPayload($payload);
-        $payload = $payload->withQueue($queue)
-            ->withUID( (string) $item['id'] );
-
         return $payload;
     }
 
@@ -144,11 +141,6 @@ class InMemoryQueue
         $item = $this->queues[$queue][(string)$id];
 
         $payload = $item['payload'];
-
-        $payload = new QueuedPayload($payload);
-        $payload = $payload->withQueue($queue)
-            ->withUID( (string) $id );
-
         return $payload;
     }
 
