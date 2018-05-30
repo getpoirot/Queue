@@ -114,12 +114,14 @@ class Worker
             $this->queue->addQueue('failed', $failedQueue, 9);
 
 
+
         # Go For Jobs
         #
         $jobExecuted = 0;
         while ( 1 )
         {
             $e = null;
+            $flagOriginReleased = null;
 
 
             ## Pop a Payload from Queue
@@ -136,32 +138,31 @@ class Worker
                 break;
 
 
-
-            ## Push To Process Payload and Release Queue So Child Processes can continue
-            #
-            $processPayload = \Poirot\Std\reTry(
-                function() use ($originPayload) {
-                    return $this->_getBuiltInQueue()->push($originPayload, 'processing');
-                }
-                , $this->getMaxTries()
-                , $this->getBlockingInterval()
-            );
-
-
-            ## Release Queue So Child Processes can continue
-            #
-            $flagOriginReleased = \Poirot\Std\reTry(
-                function() use ($originPayload) {
-                    $this->queue->release($originPayload);
-                    return true;
-                }
-                , $this->getMaxTries()
-                , $this->getBlockingInterval()
-            );
-
-
-
             try {
+
+                ## Push To Process Payload and Release Queue So Child Processes can continue
+                #
+                $processPayload = \Poirot\Std\reTry(
+                    function() use ($originPayload) {
+                        return $this->_getBuiltInQueue()->push($originPayload, 'processing');
+                    }
+                    , $this->getMaxTries()
+                    , $this->getBlockingInterval()
+                );
+
+
+                ## Release Queue So Child Processes can continue
+                #
+                $flagOriginReleased = \Poirot\Std\reTry(
+                    function() use ($originPayload) {
+                        $this->queue->release($originPayload);
+                        return true;
+                    }
+                    , $this->getMaxTries()
+                    , $this->getBlockingInterval()
+                );
+
+
 
                 ## Perform Payload Execution
                 #
@@ -211,38 +212,55 @@ class Worker
                 );
             }
 
-            catch (\Exception $e) {
-
+            catch (\Exception $e)
+            {
+exc:
                 // Logical Exceptions are OK and not considered as critical errors.
 
-                if ( $e instanceof \LogicException ) {
-
-                    // Log Failed Messages
-                    $this->event()->trigger(
-                        EventHeapOfWorker::EVENT_PAYLOAD_FAILURE
-                        , [
-                            'workerName' => $this->workerName,
-                            'payload'    => $processPayload,
-                            'exception'  => $e
-                        ]
-                    );
-
-                } else {
-
+                if (! $e instanceof \LogicException )
+                {
                     // Origin Released from queue and process failed
                     // So It Must Back To List Again
+                    if (! isset($flagOriginReleased) )
+                        $flagOriginReleased = \Poirot\Std\reTry(
+                            function() use ($originPayload) {
+                                $this->queue->release($originPayload);
+                                return true;
+                            }
+                            , $this->getMaxTries()
+                            , $this->getBlockingInterval()
+                        );
+
+
                     if ( isset($flagOriginReleased) ) {
+
                         \Poirot\Std\reTry(
                             function () use ($originPayload) {
                                 // Push Payload Back To Queue
-                                return $this->queue->push($originPayload, $originPayload->getQueue());
+                                return $this->_getBuiltInQueue()->push($originPayload, 'error');
                             }
                             , $this->getMaxTries()
                             , $this->getBlockingInterval()
                         );
                     }
                 }
+
+                // Log Failed Messages
+                $this->event()->trigger(
+                    EventHeapOfWorker::EVENT_PAYLOAD_FAILURE
+                    , [
+                        'workerName' => $this->workerName,
+                        'payload'    => $originPayload,
+                        'exception'  => $e
+                    ]
+                );
             }
+
+            catch (\Throwable $e)
+            {
+                goto exc;
+            }
+
 
             ## Release Process From Queue
             #
