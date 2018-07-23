@@ -57,7 +57,13 @@ class AggregateQueue
             }
 
         } else {
-            $qd      = $this->_getQueueOfChannel($queue);
+            if (false === $qd = $this->_getQueueOfChannel($queue) )
+                throw new \RuntimeException(sprintf(
+                    'Channel (%s) is not present when trying to push payload: (%s).'
+                    , $queue, \Poirot\Std\flatten($payload)
+                ));
+
+
             $payload = $qd->push($payload, $queue);
         }
 
@@ -99,7 +105,12 @@ class AggregateQueue
             }
 
         } else {
-            $qd      = $this->_getQueueOfChannel($queue);
+            if (false === $qd = $this->_getQueueOfChannel($queue) )
+                throw new \RuntimeException(sprintf(
+                    'Channel (%s) is not present when trying to pop'
+                    , $queue
+                ));
+
             $payload = $qd->pop($queue);
         }
 
@@ -132,7 +143,13 @@ class AggregateQueue
             }
 
         } else {
-            $qd      = $this->_getQueueOfChannel($queue);
+            if (false === $qd = $this->_getQueueOfChannel($queue) )
+                throw new \RuntimeException(sprintf(
+                    'Channel (%s) is not present when trying to release: (%s)'
+                    , $queue ,\Poirot\Std\flatten($id)
+                ));
+
+
             $qd->release($id, $queue);
         }
     }
@@ -159,7 +176,13 @@ class AggregateQueue
             }
 
         } else {
-            $qd      = $this->_getQueueOfChannel($queue);
+            if (false === $qd = $this->_getQueueOfChannel($queue) )
+                throw new \RuntimeException(sprintf(
+                    'Channel (%s) is not present when trying to find: (%s).'
+                    , $queue ,\Poirot\Std\flatten($id)
+                ));
+
+
             $payload = $qd->findByID($id, $queue);
         }
 
@@ -185,7 +208,12 @@ class AggregateQueue
                 $count += $queue->size($channel);
 
         } else {
-            $qd    = $this->_getQueueOfChannel($queue);
+            if (false === $qd = $this->_getQueueOfChannel($queue) )
+                throw new \RuntimeException(sprintf(
+                    'Channel (%s) is not present when trying to get size.'
+                    , $queue
+                ));
+
             $count = $qd->size($queue);
         }
 
@@ -279,17 +307,8 @@ class AggregateQueue
      */
     protected function _getQueueOfChannel($channel)
     {
-        $origin  = $channel;
         $channel = $this->_normalizeQueueName($channel);
-
-        if (! isset($this->channels_queue[$channel]) )
-            throw new exReadError(sprintf(
-                'Channel (%s) is not accessible.'
-                , $origin
-            ));
-
-
-        return $this->channels_queue[$channel];
+        return $this->channels_queue[$channel] ?? false;
     }
 
     /**
