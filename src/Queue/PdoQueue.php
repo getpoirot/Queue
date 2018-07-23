@@ -16,6 +16,7 @@ class PdoQueue
 {
     /** @var \PDO */
     protected $conn;
+    protected $table;
 
     /** @var SerializeInterchange */
     protected $_c_interchangable;
@@ -24,11 +25,13 @@ class PdoQueue
     /**
      * Constructor.
      *
-     * @param \PDO $conn
+     * @param \PDO   $conn
+     * @param string $table
      */
-    function __construct(\PDO $conn)
+    function __construct(\PDO $conn, $table = null)
     {
-        $this->conn = $conn;
+        $this->conn  = $conn;
+        $this->table = ($table === null) ? 'Queue' : (string) $table;
     }
 
 
@@ -69,7 +72,7 @@ class PdoQueue
             $sPayload = addslashes(serialize($qPayload));
             $time     = $qPayload->getCreatedTimestamp();
 
-            $sql = "INSERT INTO `Queue` 
+            $sql = "INSERT INTO `{$this->table}` 
                    (`task_id`, `queue_name`, `payload`, `created_timestamp`, `is_pop`)
                    VALUES ('$uid', '$qName', '$sPayload', '$time', '0');
             ";
@@ -110,7 +113,7 @@ class PdoQueue
             //
             $this->conn->beginTransaction();
 
-            $sql = "SELECT * FROM `Queue` WHERE `queue_name` = '$qName' and `is_pop` = 0;";
+            $sql = "SELECT * FROM `{$this->table}` WHERE `queue_name` = '$qName' and `is_pop` = 0;";
             $stm = $this->conn->prepare($sql);
             $stm->execute();
             $stm->setFetchMode(\PDO::FETCH_ASSOC);
@@ -120,7 +123,7 @@ class PdoQueue
             // Update
             //
             if ($queued ) {
-                $sql = "UPDATE `Queue` SET `is_pop` = 1 WHERE `task_id` = '{$queued['task_id']}';";
+                $sql = "UPDATE `{$this->table}` SET `is_pop` = 1 WHERE `task_id` = '{$queued['task_id']}';";
                 $this->conn->exec($sql);
             }
 
@@ -162,7 +165,7 @@ class PdoQueue
 
         try {
 
-            $sql = "DELETE FROM `Queue` WHERE `task_id` = '{$id}' and `queue_name` = '{$queue}';";
+            $sql = "DELETE FROM `{$this->table}` WHERE `task_id` = '{$id}' and `queue_name` = '{$queue}';";
             $this->conn->exec($sql);
 
         } catch (\Exception $e) {
@@ -184,7 +187,7 @@ class PdoQueue
         $queue = $this->_normalizeQueueName($queue);
 
         try {
-            $sql = "SELECT * FROM `Queue` WHERE `queue_name` = '$queue' and `task_id` = '$id';";
+            $sql = "SELECT * FROM `{$this->table}` WHERE `queue_name` = '$queue' and `task_id` = '$id';";
 
             $stm = $this->conn->prepare($sql);
             $stm->execute();
@@ -216,7 +219,7 @@ class PdoQueue
 
 
         try {
-            $sql = "SELECT COUNT(*) as `count_queue` FROM `Queue` WHERE `queue_name` = '$queue';";
+            $sql = "SELECT COUNT(*) as `count_queue` FROM `{$this->table}` WHERE `queue_name` = '$queue';";
 
             $stm = $this->conn->prepare($sql);
             $stm->execute();
@@ -241,7 +244,7 @@ class PdoQueue
     {
         try {
 
-            $sql = "SELECT `queue_name` FROM `Queue` GROUP BY `queue_name`;";
+            $sql = "SELECT `queue_name` FROM `{$this->table}` GROUP BY `queue_name`;";
 
             $stm = $this->conn->prepare($sql);
             $stm->execute();
