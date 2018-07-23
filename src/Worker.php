@@ -180,7 +180,7 @@ class Worker
                         $failedPayload = $e->getPayload();
                         $failedPayload->incCountRetries();
 
-                        return $this->_getBuiltInQueue()->push($failedPayload, 'failed' );
+                        return $this->queue->push($failedPayload, 'failed' );
                     }
                     , $this->getMaxTries()
                     , $this->getBlockingInterval()
@@ -237,7 +237,7 @@ exc:
                         \Poirot\Std\reTry(
                             function () use ($originPayload) {
                                 // Push Payload Back To Queue
-                                return $this->_getBuiltInQueue()->push($originPayload, 'error');
+                                return $this->queue->push($originPayload, 'failed');
                             }
                             , $this->getMaxTries()
                             , $this->getBlockingInterval()
