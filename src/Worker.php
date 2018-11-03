@@ -35,7 +35,7 @@ class Worker
     protected $builtinQueue;
 
 
-    protected $maxTries = 30;
+    protected $maxTries = 5;
     /** @var int Second(s) */
     protected $blockingInterval = 3000;
     /** @var int Second(s) */

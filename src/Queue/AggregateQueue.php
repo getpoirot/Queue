@@ -2,7 +2,6 @@
 namespace Poirot\Queue\Queue;
 
 use Poirot\Queue\Exception\exIOError;
-use Poirot\Queue\Exception\exReadError;
 use Poirot\Queue\Interfaces\iPayload;
 use Poirot\Queue\Interfaces\iPayloadQueued;
 use Poirot\Queue\Interfaces\iQueueDriver;
