@@ -66,45 +66,58 @@ class MongoQueue
      */
     function push($payload, $queue = null)
     {
-        $payload  = $payload->getData();
-        $sPayload = $this->_interchangeable()
-            ->makeForward($payload);
-
-        $uid = ($payload instanceof iPayloadQueued)
-            ? $payload->getUID()
-            : new MongoDB\BSON\ObjectID();
-
-        if ($queue === null && $payload instanceof iPayloadQueued)
+        if ( null === $queue && $payload instanceof iPayloadQueued )
             $queue = $payload->getQueue();
 
-        $qName = $this->_normalizeQueueName($queue);
+
+
+
+        /** @var QueuedPayload $qPayload */
+        $qPayload = $payload;
 
         $time = ($payload instanceof iPayloadQueued)
             ? $time = $payload->getCreatedTimestamp()
             : time();
 
+        if (! $payload instanceof iPayloadQueued ) {
+            $qPayload = new QueuedPayload($payload);
+
+            $uid      = new MongoDB\BSON\ObjectID();
+            $qPayload = $qPayload
+                ->withUID( $uid )
+            ;
+
+        } else {
+
+            $uid = new MongoDB\BSON\ObjectID($qPayload->getUID());
+        }
+
+        $qPayload = $qPayload->withQueue( $this->_normalizeQueueName($queue) );
+
+
+        // .............
+
+        $sPayload = $this->_interchangeable()
+            ->makeForward($qPayload);
+
         try {
             $this->collection->insertOne(
                 [
                     '_id'     => $uid,
-                    'queue'   => $qName,
+                    'queue'   => $qPayload->getQueue(),
                     'payload' => new MongoDB\BSON\Binary($sPayload, MongoDB\BSON\Binary::TYPE_GENERIC),
                     'payload_humanize' => $sPayload,
                     'created_timestamp' => $time,
                     'pop'     => false, // not yet popped; against race condition
                 ]
             );
+
         } catch (\Exception $e) {
             throw new exWriteError('Error While Write To Mongo Client.', $e->getCode(), $e);
         }
 
-        $queued = new QueuedPayload($payload);
-        $queued = $queued
-            ->withUID( (string) $uid)
-            ->withQueue($qName)
-        ;
 
-        return $queued;
+        return $qPayload;
     }
 
     /**
@@ -148,7 +161,6 @@ class MongoQueue
         $payload = $this->_interchangeable()
             ->retrieveBackward($queued['payload']);
 
-        $payload = new QueuedPayload($payload);
         $payload = $payload->withQueue($queue)
             ->withUID( (string) $queued['_id'] );
 
@@ -216,7 +228,6 @@ class MongoQueue
         $payload = $this->_interchangeable()
             ->retrieveBackward($queued['payload']);
 
-        $payload = new QueuedPayload($payload);
         $payload = $payload->withQueue($queue)
             ->withUID( (string) $queued['_id'] );
 
